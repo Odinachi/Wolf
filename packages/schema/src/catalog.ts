@@ -1,0 +1,209 @@
+import type { ComponentType, NodeStyle } from './types';
+
+export type PropKind = 'text' | 'longtext' | 'number' | 'boolean' | 'select' | 'icon' | 'url';
+
+export interface PropDef {
+  key: string;
+  label: string;
+  kind: PropKind;
+  options?: string[];
+}
+
+export interface ComponentDef {
+  type: ComponentType;
+  label: string;
+  category: 'Layout' | 'Content' | 'Input' | 'Chrome';
+  /** Whether the component can hold children. */
+  container: boolean;
+  description: string;
+  props: PropDef[];
+  defaultProps: Record<string, unknown>;
+  defaultStyle: NodeStyle;
+}
+
+const TEXT_VARIANTS = ['display', 'headline', 'title', 'body', 'label', 'caption'];
+
+/** Every component Wolf knows how to render on the web and compile to Flutter. */
+export const COMPONENTS: Record<ComponentType, ComponentDef> = {
+  Column: {
+    type: 'Column', label: 'Column', category: 'Layout', container: true,
+    description: 'Stacks children vertically.',
+    props: [], defaultProps: {}, defaultStyle: { gap: 12 },
+  },
+  Row: {
+    type: 'Row', label: 'Row', category: 'Layout', container: true,
+    description: 'Places children side by side.',
+    props: [], defaultProps: {}, defaultStyle: { gap: 12, crossAxisAlignment: 'center' },
+  },
+  Stack: {
+    type: 'Stack', label: 'Stack', category: 'Layout', container: true,
+    description: 'Layers children on top of each other.',
+    props: [], defaultProps: {}, defaultStyle: {},
+  },
+  Container: {
+    type: 'Container', label: 'Box', category: 'Layout', container: true,
+    description: 'A box with padding, color and rounded corners.',
+    props: [], defaultProps: {}, defaultStyle: { padding: 16 },
+  },
+  Card: {
+    type: 'Card', label: 'Card', category: 'Layout', container: true,
+    description: 'An elevated surface for grouped content.',
+    props: [], defaultProps: {}, defaultStyle: { padding: 16, borderRadius: 16, elevation: 1, gap: 8 },
+  },
+  ListView: {
+    type: 'ListView', label: 'List', category: 'Layout', container: true,
+    description: 'A scrollable list. Long screens should wrap content in one.',
+    props: [{ key: 'direction', label: 'Direction', kind: 'select', options: ['vertical', 'horizontal'] }],
+    defaultProps: { direction: 'vertical' }, defaultStyle: { gap: 12 },
+  },
+  Grid: {
+    type: 'Grid', label: 'Grid', category: 'Layout', container: true,
+    description: 'Lays children out in columns.',
+    props: [{ key: 'columns', label: 'Columns', kind: 'number' }],
+    defaultProps: { columns: 2 }, defaultStyle: { gap: 12 },
+  },
+  Spacer: {
+    type: 'Spacer', label: 'Spacer', category: 'Layout', container: false,
+    description: 'Empty space. Without a height it fills the remaining space.',
+    props: [], defaultProps: {}, defaultStyle: { height: 16 },
+  },
+  Divider: {
+    type: 'Divider', label: 'Divider', category: 'Layout', container: false,
+    description: 'A thin horizontal line.',
+    props: [], defaultProps: {}, defaultStyle: {},
+  },
+  Text: {
+    type: 'Text', label: 'Text', category: 'Content', container: false,
+    description: 'A run of text in one of the theme text styles.',
+    props: [
+      { key: 'text', label: 'Text', kind: 'longtext' },
+      { key: 'variant', label: 'Style', kind: 'select', options: TEXT_VARIANTS },
+    ],
+    defaultProps: { text: 'Text', variant: 'body' }, defaultStyle: {},
+  },
+  Image: {
+    type: 'Image', label: 'Image', category: 'Content', container: false,
+    description: 'A network image.',
+    props: [
+      { key: 'src', label: 'Image URL', kind: 'url' },
+      { key: 'fit', label: 'Fit', kind: 'select', options: ['cover', 'contain', 'fill'] },
+    ],
+    defaultProps: { src: 'https://picsum.photos/seed/wolf/600/400', fit: 'cover' },
+    defaultStyle: { height: 180, borderRadius: 12, width: 'fill' },
+  },
+  Icon: {
+    type: 'Icon', label: 'Icon', category: 'Content', container: false,
+    description: 'A Material icon.',
+    props: [
+      { key: 'icon', label: 'Icon', kind: 'icon' },
+      { key: 'size', label: 'Size', kind: 'number' },
+    ],
+    defaultProps: { icon: 'star', size: 24 }, defaultStyle: {},
+  },
+  Avatar: {
+    type: 'Avatar', label: 'Avatar', category: 'Content', container: false,
+    description: 'A circular avatar with an image or initials.',
+    props: [
+      { key: 'initials', label: 'Initials', kind: 'text' },
+      { key: 'src', label: 'Image URL', kind: 'url' },
+      { key: 'size', label: 'Size', kind: 'number' },
+    ],
+    defaultProps: { initials: 'AB', size: 40 }, defaultStyle: {},
+  },
+  Chip: {
+    type: 'Chip', label: 'Chip', category: 'Content', container: false,
+    description: 'A compact label, tag or filter.',
+    props: [
+      { key: 'label', label: 'Label', kind: 'text' },
+      { key: 'icon', label: 'Icon', kind: 'icon' },
+      { key: 'selected', label: 'Selected', kind: 'boolean' },
+    ],
+    defaultProps: { label: 'Chip', selected: false }, defaultStyle: {},
+  },
+  ListTile: {
+    type: 'ListTile', label: 'List item', category: 'Content', container: false,
+    description: 'A row with a title, subtitle and optional icons, for lists and settings.',
+    props: [
+      { key: 'title', label: 'Title', kind: 'text' },
+      { key: 'subtitle', label: 'Subtitle', kind: 'text' },
+      { key: 'leadingIcon', label: 'Leading icon', kind: 'icon' },
+      { key: 'trailingIcon', label: 'Trailing icon', kind: 'icon' },
+    ],
+    defaultProps: { title: 'Title', subtitle: 'Subtitle', leadingIcon: 'person', trailingIcon: 'chevron_right' },
+    defaultStyle: {},
+  },
+  ProgressBar: {
+    type: 'ProgressBar', label: 'Progress', category: 'Content', container: false,
+    description: 'A horizontal progress indicator from 0 to 1.',
+    props: [{ key: 'value', label: 'Value (0-1)', kind: 'number' }],
+    defaultProps: { value: 0.6 }, defaultStyle: {},
+  },
+  Button: {
+    type: 'Button', label: 'Button', category: 'Input', container: false,
+    description: 'A tappable button.',
+    props: [
+      { key: 'label', label: 'Label', kind: 'text' },
+      { key: 'variant', label: 'Variant', kind: 'select', options: ['filled', 'tonal', 'outlined', 'text'] },
+      { key: 'icon', label: 'Icon', kind: 'icon' },
+    ],
+    defaultProps: { label: 'Continue', variant: 'filled' }, defaultStyle: { width: 'fill' },
+  },
+  IconButton: {
+    type: 'IconButton', label: 'Icon button', category: 'Input', container: false,
+    description: 'A tappable icon.',
+    props: [{ key: 'icon', label: 'Icon', kind: 'icon' }],
+    defaultProps: { icon: 'favorite_border' }, defaultStyle: {},
+  },
+  TextField: {
+    type: 'TextField', label: 'Text field', category: 'Input', container: false,
+    description: 'A text input.',
+    props: [
+      { key: 'label', label: 'Label', kind: 'text' },
+      { key: 'hint', label: 'Placeholder', kind: 'text' },
+      { key: 'icon', label: 'Icon', kind: 'icon' },
+      { key: 'obscure', label: 'Hide text (password)', kind: 'boolean' },
+      { key: 'keyboard', label: 'Keyboard', kind: 'select', options: ['text', 'email', 'number', 'phone'] },
+    ],
+    defaultProps: { label: 'Label', hint: '', obscure: false, keyboard: 'text' }, defaultStyle: {},
+  },
+  Switch: {
+    type: 'Switch', label: 'Switch', category: 'Input', container: false,
+    description: 'An on/off toggle with a label.',
+    props: [
+      { key: 'label', label: 'Label', kind: 'text' },
+      { key: 'value', label: 'On', kind: 'boolean' },
+    ],
+    defaultProps: { label: 'Notifications', value: true }, defaultStyle: {},
+  },
+  Checkbox: {
+    type: 'Checkbox', label: 'Checkbox', category: 'Input', container: false,
+    description: 'A checkbox with a label.',
+    props: [
+      { key: 'label', label: 'Label', kind: 'text' },
+      { key: 'value', label: 'Checked', kind: 'boolean' },
+    ],
+    defaultProps: { label: 'I agree', value: false }, defaultStyle: {},
+  },
+  Slider: {
+    type: 'Slider', label: 'Slider', category: 'Input', container: false,
+    description: 'Pick a value from 0 to 1.',
+    props: [{ key: 'value', label: 'Value (0-1)', kind: 'number' }],
+    defaultProps: { value: 0.5 }, defaultStyle: {},
+  },
+  AppBar: {
+    type: 'AppBar', label: 'App bar', category: 'Chrome', container: false,
+    description: 'The title bar at the top of a screen. Only valid as the first child of a screen root.',
+    props: [
+      { key: 'title', label: 'Title', kind: 'text' },
+      { key: 'showBack', label: 'Back button', kind: 'boolean' },
+      { key: 'actionIcon', label: 'Action icon', kind: 'icon' },
+    ],
+    defaultProps: { title: 'Title', showBack: false }, defaultStyle: {},
+  },
+};
+
+export const COMPONENT_TYPES = Object.keys(COMPONENTS) as ComponentType[];
+
+export function isContainer(type: ComponentType): boolean {
+  return COMPONENTS[type]?.container ?? false;
+}
