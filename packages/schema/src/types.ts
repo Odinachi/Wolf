@@ -141,7 +141,8 @@ export interface BackendConfig {
   projectId?: string;
 }
 
-export type BuildPlatform = 'android' | 'ios' | 'web';
+/** Wolf targets mobile apps. */
+export type BuildPlatform = 'android' | 'ios';
 
 export interface BuildConfig {
   appName: string;

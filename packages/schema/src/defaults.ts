@@ -47,7 +47,7 @@ export function createBlankSchema(name: string, description = ''): AppSchema {
       bundleId: `com.wolf.${slug(name)}`,
       version: '1.0.0',
       buildNumber: 1,
-      platforms: ['android', 'ios', 'web'],
+      platforms: ['android', 'ios'],
     },
   };
 }
