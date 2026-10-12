@@ -1,0 +1,7 @@
+# uv workspace for the Python side of the monorepo.
+[tool.uv.workspace]
+members = ["apps/api", "packages/flutter-codegen"]
+
+[tool.pytest.ini_options]
+testpaths = ["apps/api/tests", "packages/flutter-codegen/tests"]
+asyncio_mode = "auto"
