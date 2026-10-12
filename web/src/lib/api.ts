@@ -2,7 +2,7 @@ import type { AppSchema, Screen, Theme } from '@wolf/schema';
 import { idToken } from './firebase';
 
 /** The backend's origin; empty means same origin (the dev server proxies /api). */
-export const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+export const API_URL = (import.meta.env.API_URL ?? '').replace(/\/$/, '');
 
 export async function authHeaders(): Promise<Record<string, string>> {
   const token = await idToken();

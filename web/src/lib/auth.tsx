@@ -14,11 +14,11 @@ import { firebaseAuth, firebaseEnabled } from './firebase';
 export type AccessMode = 'open' | 'waitlist';
 
 /**
- * VITE_ALLOW_AUTH=true shows sign-in; otherwise the site shows a waitlist. Unset means waitlist, so a
+ * ALLOW_AUTH=true shows sign-in; otherwise the site shows a waitlist. Unset means waitlist, so a
  * deploy that forgets the variable stays closed. (The backend enforces access separately with
  * WOLF_ACCESS_MODE, so this only decides what the page shows.)
  */
-const ACCESS_MODE: AccessMode = import.meta.env.VITE_ALLOW_AUTH?.trim().toLowerCase() === 'true' ? 'open' : 'waitlist';
+const ACCESS_MODE: AccessMode = import.meta.env.ALLOW_AUTH?.trim().toLowerCase() === 'true' ? 'open' : 'waitlist';
 
 interface AuthState {
   user: User | null;

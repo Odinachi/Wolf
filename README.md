@@ -80,7 +80,7 @@ uv run uvicorn wolf_api.main:app --reload --port 8000
 
 ```bash
 cd web
-cp .env.example .env   # add the Firebase web config and set VITE_ALLOW_AUTH=true
+cp .env.example .env   # add the Firebase web config and set ALLOW_AUTH=true
 npm install
 npm run dev            # → http://localhost:5173
 ```
@@ -114,10 +114,10 @@ run `WOLF_API_PORT=8010 npm run dev`.
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_ALLOW_AUTH` | `true` shows **Log in / Get started**. Unset or anything else shows **Join waitlist** |
-| `VITE_API_URL` | The backend URL. Leave empty in development |
-| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Your Firebase web config (public values) |
-| `VITE_SITE_URL` | Your site's public URL, for social preview images |
+| `ALLOW_AUTH` | `true` shows **Log in / Get started**. Unset or anything else shows **Join waitlist** |
+| `API_URL` | The backend URL. Leave empty in development |
+| `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_APP_ID` | Your Firebase web config (public values) |
+| `SITE_URL` | Your site's public URL, for social preview images |
 
 </details>
 
@@ -143,8 +143,8 @@ Wolf runs on **Railway** (backend + SQLite) and **Vercel** (web), with **Firebas
 <summary><b>Web on Vercel</b></summary>
 
 1. Import the repo with **Root Directory** `web`. Settings come from `web/vercel.json`.
-2. Add the `VITE_FIREBASE_*` values, `VITE_API_URL` (your Railway URL) and `VITE_SITE_URL`.
-   Leave `VITE_ALLOW_AUTH` unset to show the waitlist.
+2. Add the `FIREBASE_*` values, `API_URL` (your Railway URL) and `SITE_URL`.
+   Leave `ALLOW_AUTH` unset to show the waitlist.
 3. In Firebase → Authentication → Settings → **Authorized domains**, add your Vercel domain.
 
 </details>
@@ -152,7 +152,7 @@ Wolf runs on **Railway** (backend + SQLite) and **Vercel** (web), with **Firebas
 <details>
 <summary><b>Waitlist</b></summary>
 
-Before launch, the site shows **Join waitlist** instead of sign-in (`VITE_ALLOW_AUTH` unset), and the
+Before launch, the site shows **Join waitlist** instead of sign-in (`ALLOW_AUTH` unset), and the
 backend refuses everyone except `WOLF_ALLOWED_EMAILS` (`WOLF_ACCESS_MODE=waitlist`), so access is
 enforced on the server, not just hidden in the page. Signups are stored with the idea people typed.
 Export them from Railway:
@@ -161,7 +161,7 @@ Export them from Railway:
 railway ssh -- python -c "import csv,sqlite3,sys; w=csv.writer(sys.stdout); w.writerow(['email','idea','created_at']); w.writerows(sqlite3.connect('/data/wolf.db').execute('select email, idea, created_at from waitlist'))"
 ```
 
-To launch, set `VITE_ALLOW_AUTH=true` on Vercel and `WOLF_ACCESS_MODE=open` on Railway.
+To launch, set `ALLOW_AUTH=true` on Vercel and `WOLF_ACCESS_MODE=open` on Railway.
 
 </details>
 
