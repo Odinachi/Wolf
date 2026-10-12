@@ -174,9 +174,10 @@ async def run_agent(
             except ToolError as e:
                 content = f"Error: {e}"
             else:
-                changed = True
-                yield _event("change", text=outcome.change)
-                content = json.dumps(outcome.result)
+                if outcome.change:  # read-only tools (get_screen) change nothing
+                    changed = True
+                    yield _event("change", text=outcome.change)
+                content = json.dumps(outcome.result, separators=(",", ":"))
             messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": content})
         if changed:
             yield _event("schema", schema=copy.deepcopy(schema))

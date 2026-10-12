@@ -24,6 +24,9 @@ FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 FIREBASE_SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT", "")
 FIREBASE_STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "")
 MAX_AGENT_TURNS = int(os.getenv("WOLF_MAX_AGENT_TURNS", "30"))
+# Projects whose full snapshot is larger than this (characters) are sent as an outline; the agent
+# fetches a screen's props and styles with get_screen when it needs them.
+SNAPSHOT_BUDGET_CHARS = int(os.getenv("WOLF_SNAPSHOT_BUDGET_CHARS", "12000"))
 
 # "open": anyone can sign in. "waitlist": the site collects waitlist signups and only the verified
 # emails in WOLF_ALLOWED_EMAILS can sign in (set this in production until launch).

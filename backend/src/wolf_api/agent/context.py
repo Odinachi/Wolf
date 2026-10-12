@@ -63,3 +63,46 @@ def cache_breakpoint_count(messages: list[dict[str, Any]]) -> int:
         if isinstance(content, list):
             count += sum(1 for part in content if isinstance(part, dict) and part.get("cache_control"))
     return count
+
+
+# ─── Project snapshot: full detail, or an outline with on-demand detail ─────
+
+
+def compact_node(node: dict) -> dict:
+    """A component tree with everything the model needs to edit it."""
+    out: dict[str, Any] = {"id": node["id"], "type": node["type"]}
+    for key in ("name", "props", "style", "onTap"):
+        if node.get(key):
+            out[key] = node[key]
+    if node.get("children"):
+        out["children"] = [compact_node(c) for c in node["children"]]
+    return out
+
+
+def outline_node(node: dict) -> dict:
+    """Just the shape of a tree: ids, types and a short label. Props and styles come from get_screen."""
+    out: dict[str, Any] = {"id": node["id"], "type": node["type"]}
+    props = node.get("props") or {}
+    label = node.get("name") or props.get("title") or props.get("text") or props.get("label")
+    if label:
+        out["label"] = str(label)[:40]
+    if node.get("children"):
+        out["children"] = [outline_node(c) for c in node["children"]]
+    return out
+
+
+def project_snapshot(schema: dict, *, outline: bool = False, full_screen_ids: set[str] = frozenset()) -> dict[str, Any]:
+    def screen(s: dict) -> dict:
+        detailed = not outline or s["id"] in full_screen_ids
+        return {
+            "id": s["id"], "name": s["name"], "root_id": s["root"]["id"], "backgroundColor": s.get("backgroundColor"),
+            "root": compact_node(s["root"]) if detailed else outline_node(s["root"]),
+        }
+
+    return {
+        "app": {"name": schema["name"], "description": schema.get("description", "")},
+        "theme": schema["theme"],
+        "navigation": schema["navigation"],
+        "dataModels": schema["dataModels"],
+        "screens": [screen(s) for s in schema["screens"]],
+    }

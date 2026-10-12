@@ -184,7 +184,7 @@ def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     # Split tool-call arguments were reassembled; the invalid call went back as an error result.
     second = fake.requests[1]["messages"]
     assert second[-3]["role"] == "assistant" and [c["id"] for c in second[-3]["tool_calls"]] == ["t1", "t2"]
-    assert second[-2]["tool_call_id"] == "t1" and text_of(second[-2]["content"]) == '{"ok": true}'
+    assert second[-2]["tool_call_id"] == "t1" and text_of(second[-2]["content"]) == '{"ok":true}'
     assert second[-1]["tool_call_id"] == "t2" and "hex color" in text_of(second[-1]["content"])
 
     saved = authed.get(f"/api/projects/{project['id']}").json()

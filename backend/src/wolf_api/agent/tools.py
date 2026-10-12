@@ -291,6 +291,13 @@ class SetNavigation(Strict):
     tabs: list[TabSpec] = Field(default_factory=list, description="Required for 'tabs': 2-5 entries.")
 
 
+class GetScreen(Strict):
+    """Read one screen in full: every component with its props, style and actions. Use it when the
+    project snapshot is an outline and you need to change existing components. Doesn't change anything."""
+
+    screen_id: str
+
+
 class UpdateApp(Strict):
     """Rename the app or update its description."""
 
@@ -304,7 +311,7 @@ class UpdateApp(Strict):
 @dataclass
 class Outcome:
     result: dict[str, Any]
-    change: str  # human-readable, shown to the user
+    change: str | None  # human-readable, shown to the user; None for read-only tools
 
 
 def _check_props(kind: str, props: dict[str, Any]) -> dict[str, Any]:
@@ -557,6 +564,13 @@ def update_app(schema: dict, a: UpdateApp) -> Outcome:
     return Outcome({"ok": True}, "Updated app details")
 
 
+def get_screen(schema: dict, a: GetScreen) -> Outcome:
+    from .context import compact_node
+
+    screen = find_screen(schema, a.screen_id)
+    return Outcome({"id": screen["id"], "name": screen["name"], "root": compact_node(screen["root"])}, None)
+
+
 # ─── Registry ────────────────────────────────────────────────────────────────
 
 TOOLS: dict[str, tuple[type[BaseModel], Callable[[dict, Any], Outcome]]] = {
@@ -573,6 +587,7 @@ TOOLS: dict[str, tuple[type[BaseModel], Callable[[dict, Any], Outcome]]] = {
     "delete_data_model": (DeleteDataModel, delete_data_model),
     "set_navigation": (SetNavigation, set_navigation),
     "update_app": (UpdateApp, update_app),
+    "get_screen": (GetScreen, get_screen),
 }
 
 

@@ -2,6 +2,8 @@ import json
 from functools import cache
 from typing import Any
 
+from .. import config
+from .context import project_snapshot
 from .tools import catalog
 
 
@@ -53,6 +55,8 @@ calls in parallel. Fewer, larger calls are better than many small ones.
 Grid for tiles.
 - Prefer theme colors; only set explicit colors when the design calls for it.
 - Never invent ids: use ids from the project snapshot or from your tool results.
+- Large projects arrive as an outline. Use get_screen to read a screen's full props and styles before \
+editing its existing components; you don't need it to add new components or screens.
 - If a tool returns an error, read it, fix the input and retry.
 - Change only what was asked. Don't delete or rewrite existing work unless asked.
 - If something can't be done with these tools (custom code, payments, publishing to app stores), say \
@@ -63,33 +67,23 @@ what you built or changed. Don't mention ids or tool names.
 """
 
 
-def _compact(node: dict) -> dict:
-    out: dict[str, Any] = {"id": node["id"], "type": node["type"]}
-    for key in ("name", "props", "style", "onTap"):
-        if node.get(key):
-            out[key] = node[key]
-    if node.get("children"):
-        out["children"] = [_compact(c) for c in node["children"]]
-    return out
-
-
-def project_snapshot(schema: dict) -> str:
-    snapshot = {
-        "app": {"name": schema["name"], "description": schema.get("description", "")},
-        "theme": schema["theme"],
-        "navigation": schema["navigation"],
-        "dataModels": schema["dataModels"],
-        "screens": [
-            {"id": s["id"], "name": s["name"], "root_id": s["root"]["id"], "backgroundColor": s.get("backgroundColor"),
-             "root": _compact(s["root"])}
-            for s in schema["screens"]
-        ],
-    }
-    return json.dumps(snapshot, separators=(",", ":"))
+def snapshot_text(schema: dict, selection: dict | None = None) -> str:
+    """The project as JSON. Large projects get an outline (context offload): the selected screen stays
+    in full and the agent reads other screens on demand with get_screen."""
+    full = json.dumps(project_snapshot(schema), separators=(",", ":"))
+    if len(full) <= config.SNAPSHOT_BUDGET_CHARS:
+        return f"<project_snapshot>\n{full}\n</project_snapshot>"
+    keep = {selection["screenId"]} if selection and selection.get("screenId") else set()
+    outline = json.dumps(project_snapshot(schema, outline=True, full_screen_ids=keep), separators=(",", ":"))
+    return (
+        f"<project_snapshot detail=\"outline\">\n{outline}\n</project_snapshot>\n"
+        "This is an outline: components show only id, type and a short label. Call get_screen for a "
+        "screen's full props and styles before changing its existing components."
+    )
 
 
 def user_turn(prompt: str, schema: dict, selection: dict | None) -> str:
-    parts = [f"<project_snapshot>\n{project_snapshot(schema)}\n</project_snapshot>"]
+    parts = [snapshot_text(schema, selection)]
     if selection and (selection.get("screenId") or selection.get("nodeId")):
         parts.append(
             f"<selection>{json.dumps({k: v for k, v in selection.items() if v})}</selection>\n"

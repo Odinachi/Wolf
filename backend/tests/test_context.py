@@ -34,3 +34,54 @@ def test_short_transcripts_and_list_content():
     view = with_cache_breakpoints([system_message("rules"), {"role": "user", "content": [{"type": "text", "text": "hi"}]}])
     assert cache_breakpoint_count(view) == 2
     assert view[1]["content"][0]["text"] == "hi"
+
+
+# ─── Context offload: outline + get_screen ───────────────────────────────────
+
+from wolf_api import config  # noqa: E402
+from wolf_api.agent.prompts import snapshot_text  # noqa: E402
+from wolf_api.agent.tools import execute  # noqa: E402
+from wolf_api.schema import blank_schema  # noqa: E402
+
+
+def big_schema(screens=12):
+    schema = blank_schema("Big")
+    for i in range(screens):
+        execute(schema, "create_screen", {"name": f"Screen {i}"})
+    for s in schema["screens"]:
+        execute(schema, "add_components", {"screen_id": s["id"], "parent_id": s["root"]["id"], "components": [
+            {"type": "Card", "style": {"padding": 16, "borderRadius": 16, "backgroundColor": "#FFFFFF"}, "children": [
+                {"type": "Text", "props": {"text": f"A long realistic headline for {s['name']}", "variant": "title"}, "style": {"fontWeight": 700}},
+                {"type": "Button", "props": {"label": "Continue", "variant": "filled", "icon": "arrow_forward"}},
+            ]} for _ in range(3)
+        ]})
+    return schema
+
+
+def test_small_projects_get_the_full_snapshot():
+    text = snapshot_text(blank_schema("Small"))
+    assert 'detail="outline"' not in text and '"padding":16' in text
+
+
+def test_large_projects_get_an_outline_and_keep_the_selected_screen(monkeypatch):
+    monkeypatch.setattr(config, "SNAPSHOT_BUDGET_CHARS", 12000)
+    schema = big_schema()
+    selected = schema["screens"][3]["id"]
+    full = snapshot_text(schema)
+    outlined = snapshot_text(schema, {"screenId": selected})
+    assert 'detail="outline"' in full and "get_screen" in full
+    import json
+    from wolf_api.agent.context import project_snapshot
+    assert len(full) < len(json.dumps(project_snapshot(schema), separators=(",", ":"))) * 0.7
+    # Outline nodes have labels but no styles; the selected screen stays in full.
+    assert '"borderRadius"' not in full
+    assert outlined.count('"borderRadius":16') == 3
+
+
+def test_get_screen_returns_full_detail_and_changes_nothing():
+    schema = big_schema(2)
+    before = copy.deepcopy(schema)
+    outcome = execute(schema, "get_screen", {"screen_id": schema["screens"][1]["id"]})
+    assert outcome.change is None and schema == before
+    card = outcome.result["root"]["children"][0]
+    assert card["style"]["borderRadius"] == 16 and card["children"][1]["props"]["label"] == "Continue"
