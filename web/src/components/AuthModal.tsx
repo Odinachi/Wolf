@@ -1,55 +1,58 @@
-import { Loader2, X } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Github, Loader2, X } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { api, type AuthProvider } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { LogoMark } from './Logo';
 
 interface Props {
   open: boolean;
-  initialMode?: 'signup' | 'login';
   /** Shown when the user was asked to sign in to run their prompt. */
   reason?: string;
+  /** Where to land after signing in. */
+  next?: string;
+  /** Called just before leaving for the provider (e.g. to remember a pending prompt). */
+  onBeforeRedirect?: () => void;
   onClose: () => void;
-  onSuccess: () => void;
 }
 
-export function AuthModal({ open, initialMode = 'signup', reason, onClose, onSuccess }: Props) {
-  const { signup, login } = useAuth();
-  const [mode, setMode] = useState(initialMode);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+function GoogleLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+    </svg>
+  );
+}
+
+const PROVIDERS: Record<AuthProvider, { label: string; icon: ReactNode; className: string }> = {
+  github: { label: 'Continue with GitHub', icon: <Github size={18} />, className: 'bg-zinc-950 text-white hover:bg-zinc-800' },
+  google: { label: 'Continue with Google', icon: <GoogleLogo />, className: 'bg-white text-zinc-900 ring-1 ring-zinc-200 hover:bg-zinc-50' },
+};
+
+export function AuthModal({ open, reason, next, onBeforeRedirect, onClose }: Props) {
+  const { signIn } = useAuth();
+  const [providers, setProviders] = useState<AuthProvider[] | null>(null);
+  const [leaving, setLeaving] = useState<AuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const firstField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    setMode(initialMode);
-    setError(null);
-    const t = setTimeout(() => firstField.current?.focus(), 50);
+    setLeaving(null);
+    api.providers().then(setProviders).catch(e => { setProviders([]); setError((e as Error).message); });
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
-    return () => { clearTimeout(t); window.removeEventListener('keydown', onKey); };
-  }, [open, initialMode, onClose]);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      if (mode === 'signup') await signup({ name, email, password });
-      else await login({ email, password });
-      onSuccess();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  const go = (provider: AuthProvider) => {
+    setLeaving(provider);
+    onBeforeRedirect?.();
+    signIn(provider, next);
   };
-
-  const input = 'w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-[15px] outline-none transition placeholder:text-zinc-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10';
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/30 p-4 backdrop-blur-sm animate-[fade-in_160ms_ease]" onMouseDown={onClose}>
@@ -64,31 +67,32 @@ export function AuthModal({ open, initialMode = 'signup', reason, onClose, onSuc
           <X size={18} />
         </button>
         <LogoMark size={40} />
-        <h2 id="auth-title" className="mt-5 text-2xl font-semibold tracking-tight text-zinc-950">
-          {mode === 'signup' ? 'Create your account' : 'Welcome back'}
-        </h2>
-        <p className="mt-1.5 text-[15px] text-zinc-500">
-          {reason ?? (mode === 'signup' ? 'Start building apps with Wolf.' : 'Sign in to keep building.')}
-        </p>
+        <h2 id="auth-title" className="mt-5 text-2xl font-semibold tracking-tight text-zinc-950">Sign in to Wolf</h2>
+        <p className="mt-1.5 text-[15px] text-zinc-500">{reason ?? 'Use your GitHub or Google account. New here? This creates your account.'}</p>
 
-        <form onSubmit={submit} className="mt-6 space-y-3">
-          {mode === 'signup' && (
-            <input ref={firstField} className={input} placeholder="Your name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} required />
+        <div className="mt-7 space-y-2.5">
+          {providers === null ? (
+            <div className="grid h-24 place-items-center"><Loader2 className="animate-spin text-zinc-300" /></div>
+          ) : providers.length === 0 ? (
+            <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800 ring-1 ring-amber-200">
+              {error ?? 'Sign-in isn’t set up on this server yet. Add GitHub or Google OAuth credentials to backend/.env.'}
+            </p>
+          ) : (
+            providers.map(p => (
+              <button
+                key={p}
+                onClick={() => go(p)}
+                disabled={leaving !== null}
+                className={`flex w-full items-center justify-center gap-2.5 rounded-xl py-3 text-[15px] font-medium transition disabled:opacity-70 ${PROVIDERS[p].className}`}
+              >
+                {leaving === p ? <Loader2 size={18} className="animate-spin" /> : PROVIDERS[p].icon}
+                {PROVIDERS[p].label}
+              </button>
+            ))
           )}
-          <input ref={mode === 'login' ? firstField : undefined} className={input} type="email" placeholder="Email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
-          <input className={input} type="password" placeholder={mode === 'signup' ? 'Password (8+ characters)' : 'Password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => setPassword(e.target.value)} required />
-          {error && <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700 ring-1 ring-red-200">{error}</p>}
-          <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 py-3 text-[15px] font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60">
-            {busy && <Loader2 size={16} className="animate-spin" />}
-            {mode === 'signup' ? 'Create account' : 'Sign in'}
-          </button>
-        </form>
-
-        <p className="mt-5 text-center text-sm text-zinc-500">
-          {mode === 'signup' ? 'Already have an account?' : 'New to Wolf?'}{' '}
-          <button className="font-medium text-zinc-950 underline-offset-4 hover:underline" onClick={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setError(null); }}>
-            {mode === 'signup' ? 'Sign in' : 'Create an account'}
-          </button>
+        </div>
+        <p className="mt-6 text-center text-xs leading-relaxed text-zinc-400">
+          Wolf only reads your name, email and avatar.
         </p>
       </div>
     </div>

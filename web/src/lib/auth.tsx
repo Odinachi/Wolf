@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, type User } from './api';
+import { api, type AuthProvider, type User } from './api';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  signup: (body: { name: string; email: string; password: string }) => Promise<User>;
-  login: (body: { email: string; password: string }) => Promise<User>;
+  /** Leaves the app to sign in with the provider, then comes back to `next`. */
+  signIn: (provider: AuthProvider, next?: string) => void;
   logout: () => Promise<void>;
 }
 
@@ -19,22 +19,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
   }, []);
 
-  const signup = useCallback(async (body: { name: string; email: string; password: string }) => {
-    const u = await api.signup(body);
-    setUser(u);
-    return u;
-  }, []);
-  const login = useCallback(async (body: { email: string; password: string }) => {
-    const u = await api.login(body);
-    setUser(u);
-    return u;
+  const signIn = useCallback((provider: AuthProvider, next = window.location.pathname) => {
+    window.location.assign(`/api/auth/${provider}/login?next=${encodeURIComponent(next)}`);
   }, []);
   const logout = useCallback(async () => {
     await api.logout().catch(() => undefined);
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, signup, login, logout }), [user, loading, signup, login, logout]);
+  const value = useMemo(() => ({ user, loading, signIn, logout }), [user, loading, signIn, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

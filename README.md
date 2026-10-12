@@ -37,6 +37,14 @@ uv sync
 uv run uvicorn wolf_api.main:app --reload --port 8000
 ```
 
+Sign-in is **GitHub and Google only**. Create an OAuth app with either (or both) and put the
+credentials in `backend/.env`. The callback URL to register is
+`<WOLF_PUBLIC_URL>/api/auth/github/callback` (or `/google/callback`), which is
+`http://localhost:5173/api/auth/github/callback` in development.
+
+- GitHub: Settings → Developer settings → [OAuth Apps](https://github.com/settings/developers) → New OAuth App
+- Google: Cloud Console → [Credentials](https://console.cloud.google.com/apis/credentials) → Create OAuth client ID → Web application
+
 **Web**
 
 ```bash

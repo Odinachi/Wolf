@@ -2,9 +2,12 @@ import type { AppSchema, Screen, Theme } from '@wolf/schema';
 
 export interface User {
   id: string;
-  email: string;
   name: string;
+  email: string | null;
+  avatar_url: string | null;
 }
+
+export type AuthProvider = 'github' | 'google';
 
 export interface ChatMessage {
   id: string;
@@ -63,8 +66,7 @@ const json = (body: unknown) => JSON.stringify(body);
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
-  signup: (body: { name: string; email: string; password: string }) => request<User>('/api/auth/signup', { method: 'POST', body: json(body) }),
-  login: (body: { email: string; password: string }) => request<User>('/api/auth/login', { method: 'POST', body: json(body) }),
+  providers: () => request<{ providers: AuthProvider[] }>('/api/auth/providers').then(r => r.providers),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
   projects: () => request<ProjectSummary[]>('/api/projects'),
