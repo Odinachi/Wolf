@@ -15,6 +15,7 @@ build/
 .env.*
 !.env.example
 backend/data/
+backend/evals/reports/
 
 # Editors / OS
 .DS_Store

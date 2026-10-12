@@ -1,0 +1,523 @@
+{
+ "version": 1,
+ "name": "Plant Pal",
+ "description": "Track and water your plants.",
+ "theme": {
+  "brightness": "light",
+  "primary": "#2E7D32",
+  "secondary": "#558B2F",
+  "background": "#FAFAF5",
+  "surface": "#FFFFFF",
+  "text": "#1B1B1B",
+  "mutedText": "#5F5F5F",
+  "radius": 14,
+  "fontFamily": "Inter"
+ },
+ "screens": [
+  {
+   "id": "s-home",
+   "name": "Home",
+   "frame": {
+    "x": 0,
+    "y": 0
+   },
+   "root": {
+    "id": "r-home",
+    "type": "Column",
+    "props": {},
+    "style": {
+     "padding": 16,
+     "gap": 12
+    },
+    "children": [
+     {
+      "id": "n1",
+      "type": "AppBar",
+      "props": {
+       "title": "Plant Pal",
+       "showBack": false,
+       "actionIcon": "notifications"
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n2",
+      "type": "Text",
+      "props": {
+       "text": "Good morning, Ada's \"plants\" cost $5",
+       "variant": "headline"
+      },
+      "style": {
+       "fontWeight": 700
+      },
+      "children": []
+     },
+     {
+      "id": "n3",
+      "type": "TextField",
+      "props": {
+       "label": "Search",
+       "hint": "Find a plant",
+       "icon": "search",
+       "keyboard": "text"
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n4",
+      "type": "ListView",
+      "props": {
+       "direction": "horizontal"
+      },
+      "style": {
+       "gap": 8,
+       "height": 48
+      },
+      "children": [
+       {
+        "id": "n5",
+        "type": "Chip",
+        "props": {
+         "label": "All",
+         "selected": true
+        },
+        "style": {},
+        "children": []
+       },
+       {
+        "id": "n6",
+        "type": "Chip",
+        "props": {
+         "label": "Indoor",
+         "icon": "home"
+        },
+        "style": {},
+        "children": []
+       }
+      ]
+     },
+     {
+      "id": "n7",
+      "type": "Grid",
+      "props": {
+       "columns": 2
+      },
+      "style": {
+       "gap": 12
+      },
+      "children": [
+       {
+        "id": "n8",
+        "type": "Card",
+        "props": {},
+        "style": {
+         "padding": 12,
+         "borderRadius": 16,
+         "gap": 8
+        },
+        "children": [
+         {
+          "id": "n9",
+          "type": "Image",
+          "props": {
+           "src": "https://picsum.photos/seed/fern/400/300",
+           "fit": "cover"
+          },
+          "style": {
+           "height": 100,
+           "borderRadius": 12,
+           "width": "fill"
+          },
+          "children": []
+         },
+         {
+          "id": "n10",
+          "type": "Text",
+          "props": {
+           "text": "Fern",
+           "variant": "title"
+          },
+          "style": {},
+          "children": []
+         }
+        ],
+        "onTap": {
+         "type": "navigate",
+         "screenId": "s-detail"
+        }
+       }
+      ]
+     },
+     {
+      "id": "n11",
+      "type": "Row",
+      "props": {},
+      "style": {
+       "gap": 8,
+       "mainAxisAlignment": "spaceBetween"
+      },
+      "children": [
+       {
+        "id": "n12",
+        "type": "Avatar",
+        "props": {
+         "initials": "AL",
+         "size": 36
+        },
+        "style": {},
+        "children": []
+       },
+       {
+        "id": "n13",
+        "type": "Text",
+        "props": {
+         "text": "A very long name that might overflow the row"
+        },
+        "style": {},
+        "children": []
+       },
+       {
+        "id": "n14",
+        "type": "IconButton",
+        "props": {
+         "icon": "favorite_border"
+        },
+        "style": {},
+        "children": [],
+        "onTap": {
+         "type": "snackbar",
+         "message": "Saved!"
+        }
+       },
+       {
+        "id": "n14b",
+        "type": "Button",
+        "props": {
+         "label": "Go",
+         "variant": "tonal"
+        },
+        "style": {
+         "width": "fill"
+        },
+        "children": []
+       }
+      ]
+     },
+     {
+      "id": "n15",
+      "type": "ListTile",
+      "props": {
+       "title": "Watering",
+       "subtitle": "Every 3 days",
+       "leadingIcon": "water_drop",
+       "trailingIcon": "chevron_right"
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n16",
+      "type": "ProgressBar",
+      "props": {
+       "value": 0.7
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n17",
+      "type": "Switch",
+      "props": {
+       "label": "Reminders",
+       "value": true
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n18",
+      "type": "Checkbox",
+      "props": {
+       "label": "Pet safe only"
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n19",
+      "type": "Slider",
+      "props": {
+       "value": 0.3
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n20",
+      "type": "Divider",
+      "props": {},
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n21",
+      "type": "Container",
+      "props": {},
+      "style": {
+       "padding": [
+        8,
+        16,
+        8,
+        16
+       ],
+       "backgroundColor": "#E8F5E9",
+       "borderRadius": 12,
+       "borderColor": "#2E7D32",
+       "borderWidth": 1
+      },
+      "children": [
+       {
+        "id": "n22",
+        "type": "Icon",
+        "props": {
+         "icon": "eco",
+         "size": 20
+        },
+        "style": {
+         "color": "#2E7D32"
+        },
+        "children": []
+       }
+      ]
+     },
+     {
+      "id": "n23",
+      "type": "Stack",
+      "props": {},
+      "style": {},
+      "children": [
+       {
+        "id": "n24",
+        "type": "Text",
+        "props": {
+         "text": "Layered"
+        },
+        "style": {},
+        "children": []
+       }
+      ]
+     },
+     {
+      "id": "n25",
+      "type": "Button",
+      "props": {
+       "label": "Docs",
+       "variant": "outlined",
+       "icon": "open_in_new"
+      },
+      "style": {},
+      "children": [],
+      "onTap": {
+       "type": "openUrl",
+       "url": "https://example.com"
+      }
+     },
+     {
+      "id": "n26",
+      "type": "Button",
+      "props": {
+       "label": "Ghost",
+       "variant": "text"
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "n27",
+      "type": "Spacer",
+      "props": {},
+      "style": {
+       "height": 24
+      },
+      "children": []
+     }
+    ]
+   }
+  },
+  {
+   "id": "s-detail",
+   "name": "Plant Detail",
+   "frame": {
+    "x": 510,
+    "y": 0
+   },
+   "root": {
+    "id": "r-detail",
+    "type": "Column",
+    "props": {},
+    "style": {
+     "padding": 16,
+     "gap": 12
+    },
+    "children": [
+     {
+      "id": "d1",
+      "type": "AppBar",
+      "props": {
+       "title": "Fern",
+       "showBack": true
+      },
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "d2",
+      "type": "Text",
+      "props": {
+       "text": "Details"
+      },
+      "style": {
+       "textAlign": "center",
+       "color": "#1B5E20",
+       "fontSize": 18
+      },
+      "children": []
+     },
+     {
+      "id": "d3",
+      "type": "Spacer",
+      "props": {},
+      "style": {},
+      "children": []
+     },
+     {
+      "id": "d4",
+      "type": "Button",
+      "props": {
+       "label": "Back",
+       "variant": "filled"
+      },
+      "style": {
+       "width": "fill"
+      },
+      "children": [],
+      "onTap": {
+       "type": "back"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "s-profile",
+   "name": "Profile",
+   "frame": {
+    "x": 1020,
+    "y": 0
+   },
+   "root": {
+    "id": "r-profile",
+    "type": "Column",
+    "props": {},
+    "style": {
+     "padding": 16
+    },
+    "children": [
+     {
+      "id": "p1",
+      "type": "Text",
+      "props": {
+       "text": "Profile",
+       "variant": "display"
+      },
+      "style": {},
+      "children": []
+     }
+    ]
+   }
+  }
+ ],
+ "dataModels": [
+  {
+   "id": "m1",
+   "name": "Plant",
+   "fields": [
+    {
+     "id": "f1",
+     "name": "id",
+     "type": "string",
+     "required": true
+    },
+    {
+     "id": "f2",
+     "name": "name",
+     "type": "string",
+     "required": true
+    },
+    {
+     "id": "f3",
+     "name": "water every days",
+     "type": "int",
+     "required": false
+    },
+    {
+     "id": "f4",
+     "name": "price",
+     "type": "double",
+     "required": false
+    },
+    {
+     "id": "f5",
+     "name": "lastWatered",
+     "type": "datetime",
+     "required": false
+    },
+    {
+     "id": "f6",
+     "name": "petSafe",
+     "type": "bool",
+     "required": true
+    },
+    {
+     "id": "f7",
+     "name": "class",
+     "type": "string",
+     "required": false
+    }
+   ]
+  }
+ ],
+ "navigation": {
+  "type": "stack",
+  "initialScreenId": "s-home",
+  "tabs": [
+   {
+    "screenId": "s-home",
+    "label": "Home",
+    "icon": "home"
+   },
+   {
+    "screenId": "s-profile",
+    "label": "Profile",
+    "icon": "person"
+   }
+  ]
+ },
+ "backend": {
+  "provider": "none",
+  "url": "https://abc.supabase.co",
+  "anonKey": "public-anon"
+ },
+ "build": {
+  "appName": "Plant Pal",
+  "bundleId": "com.wolf.plantpal",
+  "version": "1.2.0",
+  "buildNumber": 3,
+  "platforms": [
+   "android",
+   "ios"
+  ]
+ }
+}

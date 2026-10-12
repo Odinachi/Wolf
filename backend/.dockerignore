@@ -5,3 +5,4 @@ data
 .env
 tests
 packages/flutter-codegen/tests
+evals

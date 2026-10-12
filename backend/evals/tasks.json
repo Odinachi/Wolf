@@ -1,0 +1,37 @@
+[
+  {
+    "id": "new-small",
+    "prompt": "A habit tracker with daily check-ins, streaks and a weekly progress view.",
+    "checks": {"min_screens": 3, "no_empty_screens": true, "compiles": true}
+  },
+  {
+    "id": "new-10-screens",
+    "prompt": "A food delivery app with 10 screens: onboarding, sign in, home with restaurants, search, restaurant detail, dish detail, cart, checkout, order tracking and profile. Use bottom tabs for the main sections.",
+    "checks": {"min_screens": 10, "no_empty_screens": true, "navigation": "tabs", "compiles": true}
+  },
+  {
+    "id": "edit-theme",
+    "seed": "plant_pal",
+    "prompt": "Make the theme dark with an orange accent.",
+    "checks": {"theme_brightness": "dark", "compiles": true}
+  },
+  {
+    "id": "edit-add-screen",
+    "seed": "plant_pal",
+    "prompt": "Add a Settings screen with toggles for watering reminders and weekly tips, and add a button on Profile that opens it.",
+    "checks": {"screen_added": true, "has_component": "Switch", "compiles": true}
+  },
+  {
+    "id": "edit-copy",
+    "seed": "plant_pal",
+    "selection": "home",
+    "prompt": "Change the greeting on this screen to say Good evening, Ada.",
+    "checks": {"text_contains": "Good evening", "compiles": true}
+  },
+  {
+    "id": "edit-navigation",
+    "seed": "plant_pal",
+    "prompt": "Use bottom tab navigation with Home and Profile as the tabs.",
+    "checks": {"navigation": "tabs", "compiles": true}
+  }
+]
