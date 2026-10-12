@@ -1,5 +1,5 @@
 import type { AppSchema } from '@wolf/schema';
-import { ApiError, type ChatMessage } from './api';
+import { API_URL, ApiError, authHeaders, type ChatMessage } from './api';
 
 export interface ChatHandlers {
   onStart?: (data: { user_message_id: string; version_id: string }) => void;
@@ -17,10 +17,9 @@ export async function streamChat(
   handlers: ChatHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/api/projects/${projectId}/chat`, {
+  const res = await fetch(`${API_URL}/api/projects/${projectId}/chat`, {
     method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(body),
     signal,
   });

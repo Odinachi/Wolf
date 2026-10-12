@@ -1,6 +1,6 @@
 import { Github, Loader2, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, type AuthProvider } from '../lib/api';
+import type { AuthProviderId } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { LogoMark } from './Logo';
 
@@ -8,10 +8,10 @@ interface Props {
   open: boolean;
   /** Shown when the user was asked to sign in to run their prompt. */
   reason?: string;
-  /** Where to land after signing in. */
-  next?: string;
-  /** Called just before leaving for the provider (e.g. to remember a pending prompt). */
-  onBeforeRedirect?: () => void;
+  /** Called just before sign-in starts (e.g. to remember a pending prompt across a redirect). */
+  onBeforeSignIn?: () => void;
+  /** Called when sign-in was cancelled or failed. */
+  onSignInFailed?: () => void;
   onClose: () => void;
 }
 
@@ -26,32 +26,43 @@ function GoogleLogo() {
   );
 }
 
-const PROVIDERS: Record<AuthProvider, { label: string; icon: ReactNode; className: string }> = {
+const PROVIDERS: Record<AuthProviderId, { label: string; icon: ReactNode; className: string }> = {
   github: { label: 'Continue with GitHub', icon: <Github size={18} />, className: 'bg-zinc-950 text-white hover:bg-zinc-800' },
   google: { label: 'Continue with Google', icon: <GoogleLogo />, className: 'bg-white text-zinc-900 ring-1 ring-zinc-200 hover:bg-zinc-50' },
 };
 
-export function AuthModal({ open, reason, next, onBeforeRedirect, onClose }: Props) {
-  const { signIn } = useAuth();
-  const [providers, setProviders] = useState<AuthProvider[] | null>(null);
-  const [leaving, setLeaving] = useState<AuthProvider | null>(null);
+export function AuthModal({ open, reason, onBeforeSignIn, onSignInFailed, onClose }: Props) {
+  const { signIn, enabled, user } = useAuth();
+  const [busy, setBusy] = useState<AuthProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setLeaving(null);
-    api.providers().then(setProviders).catch(e => { setProviders([]); setError((e as Error).message); });
+    setBusy(null);
+    setError(null);
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Close once signed in.
+  useEffect(() => {
+    if (open && user) onClose();
+  }, [open, user, onClose]);
+
   if (!open) return null;
 
-  const go = (provider: AuthProvider) => {
-    setLeaving(provider);
-    onBeforeRedirect?.();
-    signIn(provider, next);
+  const go = async (provider: AuthProviderId) => {
+    setBusy(provider);
+    setError(null);
+    onBeforeSignIn?.();
+    try {
+      await signIn(provider);
+    } catch (e) {
+      onSignInFailed?.();
+      if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+      setBusy(null);
+    }
   };
 
   return (
@@ -71,25 +82,24 @@ export function AuthModal({ open, reason, next, onBeforeRedirect, onClose }: Pro
         <p className="mt-1.5 text-[15px] text-zinc-500">{reason ?? 'Use your GitHub or Google account. New here? This creates your account.'}</p>
 
         <div className="mt-7 space-y-2.5">
-          {providers === null ? (
-            <div className="grid h-24 place-items-center"><Loader2 className="animate-spin text-zinc-300" /></div>
-          ) : providers.length === 0 ? (
+          {!enabled ? (
             <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800 ring-1 ring-amber-200">
-              {error ?? 'Sign-in isn’t set up on this server yet. Add GitHub or Google OAuth credentials to backend/.env.'}
+              Sign-in isn’t set up for this site yet. Add your Firebase web config to <code>web/.env</code> (see <code>.env.example</code>).
             </p>
           ) : (
-            providers.map(p => (
+            (Object.keys(PROVIDERS) as AuthProviderId[]).map(p => (
               <button
                 key={p}
                 onClick={() => go(p)}
-                disabled={leaving !== null}
+                disabled={busy !== null}
                 className={`flex w-full items-center justify-center gap-2.5 rounded-xl py-3 text-[15px] font-medium transition disabled:opacity-70 ${PROVIDERS[p].className}`}
               >
-                {leaving === p ? <Loader2 size={18} className="animate-spin" /> : PROVIDERS[p].icon}
+                {busy === p ? <Loader2 size={18} className="animate-spin" /> : PROVIDERS[p].icon}
                 {PROVIDERS[p].label}
               </button>
             ))
           )}
+          {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</p>}
         </div>
         <p className="mt-6 text-center text-xs leading-relaxed text-zinc-400">
           Wolf only reads your name, email and avatar.

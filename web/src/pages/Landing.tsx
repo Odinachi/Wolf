@@ -20,7 +20,8 @@ import { PhoneThumbnail } from '../renderer/PhoneFrame';
 
 const GITHUB_URL = 'https://github.com/Odinachi/Wolf';
 const PENDING_KEY = 'wolf:pending-prompt';
-// Set while the user is away signing in, so the pending prompt is built when they come back.
+// Set while the user is signing in, so the pending prompt is built once they're signed in
+// (also across the redirect fallback, which reloads the page).
 const RESUME_KEY = 'wolf:resume-build';
 const APP_KINDS = ['mobile', 'fitness', 'recipe', 'shopping', 'travel', 'habit'];
 const MARQUEE_ROWS = [
@@ -40,7 +41,6 @@ export function Landing() {
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState(() => sessionStorage.getItem(PENDING_KEY) ?? '');
   const [auth, setAuth] = useState<{ open: boolean; reason?: string }>({ open: false });
-  const [authError, setAuthError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -58,17 +58,6 @@ export function Landing() {
     api.projects().then(setProjects).catch(() => setProjects([]));
   }, [user]);
 
-  // Back from the provider with an error: show it once and clean the URL.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const err = params.get('auth_error');
-    if (err) {
-      setAuthError(err);
-      sessionStorage.removeItem(RESUME_KEY);
-      window.history.replaceState(null, '', window.location.pathname);
-    }
-  }, []);
-
   const build = useCallback(async (text: string) => {
     setError(null);
     setCreating(true);
@@ -82,7 +71,7 @@ export function Landing() {
     }
   }, [navigate]);
 
-  // Back from signing in with a prompt waiting: build it.
+  // Signed in with a prompt waiting: build it.
   useEffect(() => {
     if (!user || !sessionStorage.getItem(RESUME_KEY)) return;
     sessionStorage.removeItem(RESUME_KEY);
@@ -94,13 +83,15 @@ export function Landing() {
     const text = prompt.trim();
     if (!text) return;
     if (!user) {
-      // Keep the prompt across the trip to GitHub/Google so nothing typed is lost.
+      // Keep the prompt through sign-in so nothing typed is lost.
       sessionStorage.setItem(PENDING_KEY, text);
       setAuth({ open: true, reason: 'Sign in with GitHub or Google and Wolf will start building your app right away.' });
       return;
     }
     build(text);
   };
+
+  const closeAuth = useCallback(() => setAuth(a => ({ ...a, open: false })), []);
 
   const removeProject = async (id: string) => {
     if (!confirm('Delete this app? This can’t be undone.')) return;
@@ -151,7 +142,7 @@ export function Landing() {
         </p>
         <div className="relative mt-8 w-full max-w-2xl sm:mt-9 animate-[fade-up_700ms_240ms_ease_both]">
           <PromptBox value={prompt} onChange={setPrompt} onSubmit={submit} busy={creating} ideas={PROMPT_IDEAS} />
-          {(error || authError) && <p className="mt-3 text-center text-sm text-red-600">{error || authError}</p>}
+          {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
         </div>
         <div className="relative -mx-4 mt-7 w-[calc(100%+2rem)] max-w-5xl sm:mx-0 sm:mt-8 sm:w-full animate-[fade-up_700ms_320ms_ease_both]">
           <PromptMarquee rows={MARQUEE_ROWS} onPick={setPrompt} />
@@ -249,9 +240,9 @@ export function Landing() {
       <AuthModal
         open={auth.open}
         reason={auth.reason}
-        next="/"
-        onBeforeRedirect={() => { if (sessionStorage.getItem(PENDING_KEY)) sessionStorage.setItem(RESUME_KEY, '1'); }}
-        onClose={() => setAuth(a => ({ ...a, open: false }))}
+        onBeforeSignIn={() => { if (sessionStorage.getItem(PENDING_KEY)) sessionStorage.setItem(RESUME_KEY, '1'); }}
+        onSignInFailed={() => sessionStorage.removeItem(RESUME_KEY)}
+        onClose={closeAuth}
       />
     </div>
   );

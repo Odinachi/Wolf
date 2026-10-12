@@ -1,4 +1,13 @@
 import type { AppSchema, Screen, Theme } from '@wolf/schema';
+import { idToken } from './firebase';
+
+/** The backend's origin; empty means same origin (the dev server proxies /api). */
+export const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await idToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export interface User {
   id: string;
@@ -7,7 +16,7 @@ export interface User {
   avatar_url: string | null;
 }
 
-export type AuthProvider = 'github' | 'google';
+export type AuthProviderId = 'github' | 'google';
 
 export interface ChatMessage {
   id: string;
@@ -44,10 +53,9 @@ export class ApiError extends Error {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetch(API_URL + path, {
       ...init,
-      credentials: 'same-origin',
-      headers: init.body ? { 'Content-Type': 'application/json', ...init.headers } : init.headers,
+      headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(await authHeaders()), ...init.headers },
     });
   } catch {
     throw new ApiError(0, "Can't reach the Wolf API. Is it running?");
@@ -66,8 +74,6 @@ const json = (body: unknown) => JSON.stringify(body);
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
-  providers: () => request<{ providers: AuthProvider[] }>('/api/auth/providers').then(r => r.providers),
-  logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
   projects: () => request<ProjectSummary[]>('/api/projects'),
   createProject: (prompt: string) => request<Project>('/api/projects', { method: 'POST', body: json({ prompt }) }),
