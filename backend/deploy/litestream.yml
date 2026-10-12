@@ -1,0 +1,8 @@
+# Continuous SQLite backups to a Google Cloud Storage / Firebase Storage bucket.
+dbs:
+  - path: ${WOLF_DATA_DIR}/wolf.db
+    replicas:
+      - type: gcs
+        bucket: ${LITESTREAM_BUCKET}
+        path: litestream/wolf.db
+        retention: 168h
