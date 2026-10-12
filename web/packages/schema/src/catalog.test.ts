@@ -3,9 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMPONENTS } from './catalog';
 
-// catalog.json lets non-TypeScript consumers (the Python API's AI agent) share this catalog.
-// Regenerate with: UPDATE_CATALOG=1 npm test -w @wolf/schema
-const path = fileURLToPath(new URL('../catalog.json', import.meta.url));
+// The backend's AI agent reads this catalog as JSON, so it is exported into the backend folder
+// (which stays deployable on its own). Regenerate with: UPDATE_CATALOG=1 npm test (in web/)
+const path = fileURLToPath(new URL('../../../../backend/src/wolf_api/agent/catalog.json', import.meta.url));
 const expected = JSON.stringify(COMPONENTS, null, 2) + '\n';
 
 describe('catalog.json', () => {

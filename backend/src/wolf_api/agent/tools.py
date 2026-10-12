@@ -25,7 +25,7 @@ FRAME_WIDTH, FRAME_GAP = 390, 120
 
 @cache
 def catalog() -> dict[str, Any]:
-    """The component catalog exported by packages/schema (catalog.json)."""
+    """The component catalog exported from web/packages/schema (catalog.json)."""
     return json.loads(config.CATALOG_PATH.read_text())
 
 

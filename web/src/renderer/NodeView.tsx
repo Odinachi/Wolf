@@ -3,7 +3,7 @@ import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import { cssColor } from './theme';
 
 /**
- * Renders a component tree the way the Flutter compiler (packages/flutter-codegen) lays it out,
+ * Renders a component tree the way the Flutter compiler (backend/packages/flutter-codegen) lays it out,
  * using Material 3 sizing. Keep the two in step when changing either.
  */
 

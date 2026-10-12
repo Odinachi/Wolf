@@ -1,4 +1,4 @@
-"""Server-side helpers for the Wolf app schema (mirrors packages/schema/src/defaults.ts)."""
+"""Server-side helpers for the Wolf app schema (mirrors web/packages/schema/src/defaults.ts)."""
 
 from __future__ import annotations
 

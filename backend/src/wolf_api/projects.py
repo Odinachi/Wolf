@@ -192,7 +192,7 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
         except Exception:
             log.exception("AI run failed")
             if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
-                error = "The server has no Anthropic API key. Add ANTHROPIC_API_KEY to apps/api/.env and restart the API."
+                error = "The server has no Anthropic API key. Add ANTHROPIC_API_KEY to backend/.env and restart the API."
             else:
                 error = "Something went wrong while generating. Check the server logs."
             yield _sse("error", {"message": error})

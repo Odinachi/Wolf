@@ -2,7 +2,7 @@
  * The Wolf app schema.
  *
  * This is the contract between the web app (rendering and editing), the API (the AI agent edits
- * it) and the Flutter compiler (packages/flutter-codegen). Every component type and style field
+ * it) and the Flutter compiler (backend/packages/flutter-codegen). Every component type and style field
  * here must map to Flutter; if you add one, add it to the compiler too.
  */
 

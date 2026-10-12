@@ -11,41 +11,52 @@ every screen directly like a design tool, connects a database, and compiles it t
 
 ## Repository layout
 
-This is a monorepo. JavaScript packages use npm workspaces and Python packages use a uv workspace.
+The backend and the frontend live side by side and can be developed and deployed independently.
 
 | Path | What it is |
 |------|------------|
-| `apps/web` | The web app (React + Vite): home prompt, projects, chat + canvas workspace |
-| `apps/api` | The API (FastAPI): auth, projects, the AI agent, builds and deploys |
-| `packages/schema` | The Wolf app schema shared by the web app (TypeScript) |
-| `packages/flutter-codegen` | Compiles a Wolf app schema into a Flutter project (Python) |
+| `backend/` | The API (FastAPI): auth, projects, the AI agent, builds and sharing. A uv workspace. |
+| `backend/packages/flutter-codegen` | Compiles a Wolf app schema into a Flutter project (Python) |
+| `web/` | The web app (React + Vite): landing page, projects, chat + canvas workspace. An npm workspace. |
+| `web/packages/schema` | The Wolf app schema: types, component catalog and tree helpers (TypeScript) |
+
+The component catalog is defined once in `web/packages/schema` and exported to
+`backend/src/wolf_api/agent/catalog.json` for the AI agent; a test fails if the two drift.
 
 ## Getting started
 
 Requirements: Node 20+, [uv](https://docs.astral.sh/uv/), and optionally the
 [Flutter SDK](https://docs.flutter.dev/get-started/install) to build apps.
 
+**Backend**
+
 ```bash
-npm install
+cd backend
+cp .env.example .env      # add your ANTHROPIC_API_KEY and OAuth app credentials
 uv sync
-cp apps/api/.env.example apps/api/.env   # add your ANTHROPIC_API_KEY
-npm run dev:api   # API on :8000
-npm run dev       # web app on :5173 (proxies /api to :8000)
+uv run uvicorn wolf_api.main:app --reload --port 8000
 ```
 
-If port 8000 is taken, run the API elsewhere and point the web app at it:
+**Web**
+
+```bash
+cd web
+npm install
+npm run dev               # http://localhost:5173, proxies /api to the backend
+```
+
+If port 8000 is taken, run the backend on another port and start the web app with
 `WOLF_API_PORT=8010 npm run dev`.
 
 ## Useful commands
 
-| Command | What it does |
-|---------|--------------|
-| `npm test` | Schema tests (Vitest) and API + compiler tests (pytest) |
-| `npm run typecheck` | Type-checks every TypeScript package |
-| `npm run assets -w @wolf/web` | Regenerates the favicons and OG image from `apps/web/public/logo.svg` |
-| `UPDATE_CATALOG=1 npm test -w @wolf/schema` | Re-exports `packages/schema/catalog.json` after changing the component catalog |
-
-The compiler tests run a real `flutter analyze` on generated apps when the Flutter SDK is installed.
+| Where | Command | What it does |
+|-------|---------|--------------|
+| `backend/` | `uv run pytest` | API and Flutter compiler tests (runs `flutter analyze` on generated apps if Flutter is installed) |
+| `web/` | `npm test` | Schema package tests |
+| `web/` | `npm run typecheck` | Type-checks the app and the schema package |
+| `web/` | `npm run assets` | Regenerates favicons and the OG image from `public/logo.svg` |
+| `web/` | `UPDATE_CATALOG=1 npm test` | Re-exports the component catalog to the backend after changing it |
 
 ## License
 

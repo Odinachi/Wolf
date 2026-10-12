@@ -13,5 +13,5 @@ CORS_ORIGINS = [o.strip() for o in os.getenv("WOLF_CORS_ORIGINS", "http://localh
 COOKIE_SECURE = os.getenv("WOLF_COOKIE_SECURE", "false").lower() == "true"
 SESSION_DAYS = int(os.getenv("WOLF_SESSION_DAYS", "30"))
 MAX_AGENT_TURNS = int(os.getenv("WOLF_MAX_AGENT_TURNS", "30"))
-# The shared component catalog exported by packages/schema.
-CATALOG_PATH = Path(__file__).resolve().parents[4] / "packages" / "schema" / "catalog.json"
+# The component catalog, exported from web/packages/schema by its tests (see catalog.test.ts).
+CATALOG_PATH = Path(__file__).resolve().parent / "agent" / "catalog.json"

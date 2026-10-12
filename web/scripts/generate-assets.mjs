@@ -1,5 +1,5 @@
 // Renders the favicon PNGs and the Open Graph image from SVG sources.
-// Run with: npm run assets -w @wolf/web
+// Run with: npm run assets (in web/)
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
