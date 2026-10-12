@@ -18,5 +18,7 @@ FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 FIREBASE_SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT", "")
 FIREBASE_STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "")
 MAX_AGENT_TURNS = int(os.getenv("WOLF_MAX_AGENT_TURNS", "30"))
+# AI requests each user may make per rolling 24 hours (0 = unlimited). Protects your Anthropic bill.
+DAILY_GENERATION_LIMIT = int(os.getenv("WOLF_DAILY_GENERATION_LIMIT", "30"))
 # The component catalog, exported from web/packages/schema by its tests (see catalog.test.ts).
 CATALOG_PATH = Path(__file__).resolve().parent / "agent" / "catalog.json"

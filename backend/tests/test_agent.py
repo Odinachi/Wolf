@@ -187,3 +187,15 @@ def test_missing_api_key_is_explained(authed, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
     assert "ANTHROPIC_API_KEY" in r.text
+
+
+def test_daily_generation_limit(authed, monkeypatch):
+    from wolf_api import config
+    monkeypatch.setattr(config, "DAILY_GENERATION_LIMIT", 2)
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    done = [SimpleNamespace(type="text", text="ok")]
+    monkeypatch.setattr(runner, "get_client", lambda: FakeClient([(done, ["ok"], "end_turn")] * 2))
+    for _ in range(2):
+        assert authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"}).status_code == 200
+    r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
+    assert r.status_code == 429 and "limit of 2" in r.json()["detail"]

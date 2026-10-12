@@ -7,20 +7,21 @@ import json
 import logging
 import os
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, AsyncIterator, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from wolf_flutter import generate_project
 
+from . import config
 from .agent.runner import run_agent
 from .auth import current_user
-from .db import Build, Message, Project, SessionLocal, User, Version, get_db
+from .db import Build, Message, Project, SessionLocal, User, Version, get_db, utcnow
 from .schema import SchemaShape, blank_schema, name_from_prompt
 
 log = logging.getLogger("wolf.projects")
@@ -163,11 +164,26 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+def check_daily_limit(user: User, db: Session) -> None:
+    limit = config.DAILY_GENERATION_LIMIT
+    if limit <= 0:
+        return
+    since = utcnow() - timedelta(hours=24)
+    used = db.scalar(
+        select(func.count(Message.id))
+        .join(Project, Project.id == Message.project_id)
+        .where(Project.user_id == user.id, Message.role == "user", Message.created_at >= since)
+    ) or 0
+    if used >= limit:
+        raise HTTPException(429, f"You've reached today's limit of {limit} AI requests. It resets over the next 24 hours.")
+
+
 @router.post("/{project_id}/chat")
 async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     project = owned(project_id, user, db)
     if project_id in _running:
         raise HTTPException(409, "The AI is already working on this project.")
+    check_daily_limit(user, db)
     history = [{"role": m.role, "content": m.content} for m in project.messages][-20:]
 
     version = Version(project_id=project.id, label=body.prompt[:200], schema=project.schema)
