@@ -41,8 +41,6 @@ class WaitlistEntry(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("wl"))
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
-    # What they want to build (often the prompt they typed on the landing page).
-    idea: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
