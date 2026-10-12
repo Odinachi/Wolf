@@ -174,3 +174,16 @@ def test_chat_reports_errors(authed, monkeypatch):
     assert "event: error" in r.text and "declined" in r.text
     saved = authed.get(f"/api/projects/{project['id']}").json()
     assert "declined" in saved["messages"][-1]["content"]
+
+
+def test_missing_api_key_is_explained(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+
+    class NoKey:
+        beta = SimpleNamespace(messages=SimpleNamespace(stream=lambda **_: (_ for _ in ()).throw(TypeError("no auth"))))
+
+    monkeypatch.setattr(runner, "get_client", lambda: NoKey())
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
+    assert "ANTHROPIC_API_KEY" in r.text

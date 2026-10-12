@@ -70,6 +70,8 @@ export function NodeView({ node, ctx, axis = null }: { node: Node; ctx: RenderCo
     height: s.height,
     width: s.width === 'fill' ? (inRow ? undefined : '100%') : s.width,
     flex: s.expand || (inRow && s.width === 'fill') ? '1 1 0' : undefined,
+    // Like Flutter, children of a Column keep their size instead of shrinking to fit.
+    flexShrink: axis === 'vertical' && !s.expand ? 0 : undefined,
     minWidth: inRow ? 0 : undefined,
     boxSizing: 'border-box',
   };

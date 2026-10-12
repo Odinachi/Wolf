@@ -26,6 +26,7 @@ export function Canvas({ schema, generating, selection, onSelect }: Props) {
     const el = ref.current;
     if (!el || schema.screens.length === 0) return;
     const { width, height } = el.getBoundingClientRect();
+    if (!width || !height) return; // hidden
     const xs = schema.screens.map(s => s.frame.x);
     const ys = schema.screens.map(s => s.frame.y);
     const minX = Math.min(...xs);
@@ -63,9 +64,9 @@ export function Canvas({ schema, generating, selection, onSelect }: Props) {
       }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    const onResize = () => fit();
-    window.addEventListener('resize', onResize);
-    return () => { el.removeEventListener('wheel', onWheel); window.removeEventListener('resize', onResize); };
+    const observer = new ResizeObserver(() => fit());
+    observer.observe(el);
+    return () => { el.removeEventListener('wheel', onWheel); observer.disconnect(); };
   }, [fit]);
 
   const zoomBy = (factor: number) => {

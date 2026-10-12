@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import zipfile
 from datetime import datetime
 from typing import Any, AsyncIterator, Literal
@@ -190,7 +191,10 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
                 yield _sse(kind, data)
         except Exception:
             log.exception("AI run failed")
-            error = "Something went wrong while generating. Check the server logs."
+            if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
+                error = "The server has no Anthropic API key. Add ANTHROPIC_API_KEY to apps/api/.env and restart the API."
+            else:
+                error = "Something went wrong while generating. Check the server logs."
             yield _sse("error", {"message": error})
         finally:
             # Runs on success, error, and client disconnect alike.

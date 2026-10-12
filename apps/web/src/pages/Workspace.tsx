@@ -9,6 +9,7 @@ import { UserMenu } from '../components/UserMenu';
 import { api, type ChatMessage, type Project } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { streamChat } from '../lib/chat';
+import { useMediaQuery } from '../lib/useMediaQuery';
 
 type Selection = { screenId: string | null; nodeId: string | null };
 
@@ -25,6 +26,9 @@ export function Workspace() {
   const [selection, setSelection] = useState<Selection>({ screenId: null, nodeId: null });
   const abortRef = useRef<AbortController | null>(null);
   const autostarted = useRef(false);
+  // On narrow screens only one pane fits; toggle between them.
+  const narrow = useMediaQuery('(max-width: 899px)');
+  const [pane, setPane] = useState<'chat' | 'preview'>('chat');
 
   const load = useCallback(async () => {
     try {
@@ -141,11 +145,22 @@ export function Workspace() {
             </div>
           </div>
         </div>
-        <UserMenu />
+        <div className="flex items-center gap-2">
+          {narrow && (
+            <div className="flex rounded-full bg-zinc-950/5 p-0.5 text-xs font-medium">
+              {(['chat', 'preview'] as const).map(p => (
+                <button key={p} onClick={() => setPane(p)} className={`rounded-full px-3 py-1.5 capitalize transition ${pane === p ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-500'}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
+          <UserMenu />
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
-        <aside className="flex w-[400px] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-950/5">
+        <aside className={`flex shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-950/5 ${narrow ? (pane === 'chat' ? 'w-full' : 'hidden') : 'w-[400px]'}`}>
           <ChatPanel
             messages={messages}
             live={live}
@@ -157,7 +172,7 @@ export function Workspace() {
             onRestore={restore}
           />
         </aside>
-        <main className="relative min-w-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-950/5">
+        <main className={`relative min-w-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-950/5 ${narrow && pane !== 'preview' ? 'hidden' : ''}`}>
           <Canvas schema={schema} generating={busy} selection={selection} onSelect={setSelection} />
         </main>
       </div>
