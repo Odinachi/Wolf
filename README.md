@@ -90,7 +90,7 @@ form, and the API refuses sign-in for everyone except `WOLF_ALLOWED_EMAILS` (enf
 not just hidden in the UI). Signups are stored in the `waitlist` table; to export them from Railway:
 
 ```bash
-railway ssh -- sqlite3 -csv -header /data/wolf.db "select email, idea, created_at from waitlist"
+railway ssh -- python -c "import csv,sqlite3,sys; w=csv.writer(sys.stdout); w.writerow(['email','idea','created_at']); w.writerows(sqlite3.connect('/data/wolf.db').execute('select email, idea, created_at from waitlist'))"
 ```
 
 Set `WOLF_ACCESS_MODE=open` (or remove it) when you launch.
