@@ -4,12 +4,6 @@ from wolf_api import config, waitlist
 from wolf_api.db import SessionLocal, WaitlistEntry
 
 
-def test_config_reports_access_mode(client, monkeypatch):
-    assert client.get("/api/config").json() == {"access_mode": "open"}
-    monkeypatch.setattr(config, "ACCESS_MODE", "waitlist")
-    assert client.get("/api/config").json() == {"access_mode": "waitlist"}
-
-
 def test_join_waitlist_stores_and_dedupes(client):
     waitlist._recent.clear()
     assert client.post("/api/waitlist", json={"email": "Fan@Example.com"}).json() == {"ok": True}

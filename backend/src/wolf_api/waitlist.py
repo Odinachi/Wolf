@@ -1,4 +1,4 @@
-"""Public endpoints for the pre-launch site: access mode and waitlist signups."""
+"""Public endpoint for the pre-launch site: waitlist signups."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import config
 from .db import WaitlistEntry, get_db
 
 router = APIRouter(prefix="/api", tags=["public"])
@@ -19,15 +18,6 @@ router = APIRouter(prefix="/api", tags=["public"])
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _RATE_LIMIT = 10  # signups per IP per hour
 _recent: dict[str, deque[float]] = defaultdict(deque)
-
-
-class PublicConfig(BaseModel):
-    access_mode: str
-
-
-@router.get("/config", response_model=PublicConfig)
-def public_config() -> PublicConfig:
-    return PublicConfig(access_mode="waitlist" if config.ACCESS_MODE == "waitlist" else "open")
 
 
 class WaitlistIn(BaseModel):

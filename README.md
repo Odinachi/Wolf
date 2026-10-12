@@ -88,8 +88,9 @@ Firebase Storage, and the web app runs on [Vercel](https://vercel.com).
 **Web on Vercel**
 
 1. Import the repo with **Root Directory** `web` (settings come from `web/vercel.json`).
-2. Environment variables: the `VITE_FIREBASE_*` values, `VITE_API_URL` (your Railway URL) and
-   `VITE_SITE_URL` (your site's URL, for social previews).
+2. Environment variables: the `VITE_FIREBASE_*` values, `VITE_API_URL` (your Railway URL),
+   `VITE_SITE_URL` (your site's URL, for social previews) and `VITE_ALLOW_AUTH` (leave unset to show
+   the waitlist).
 3. In Firebase → Authentication → Settings → Authorized domains, add your Vercel domain.
 
 **Waitlist.** With `WOLF_ACCESS_MODE=waitlist`, every way in on the landing page opens a waitlist

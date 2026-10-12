@@ -123,10 +123,14 @@ export function Landing() {
           <div className="flex items-center gap-2">
             {loading ? null : user ? <UserMenu /> : (
               <>
-                <button onClick={() => join()} className="hidden rounded-full px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-950/5 min-[400px]:block">Log in</button>
-                <button onClick={() => join()} className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">
-                  {accessMode === 'waitlist' ? 'Join waitlist' : 'Get started'}
-                </button>
+                {accessMode === 'open' ? (
+                  <>
+                    <button onClick={() => join()} className="hidden rounded-full px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-950/5 min-[400px]:block">Log in</button>
+                    <button onClick={() => join()} className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Get started</button>
+                  </>
+                ) : (
+                  <button onClick={() => join()} className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Join waitlist</button>
+                )}
               </>
             )}
           </div>

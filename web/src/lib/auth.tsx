@@ -13,12 +13,19 @@ import { firebaseAuth, firebaseEnabled } from './firebase';
 
 export type AccessMode = 'open' | 'waitlist';
 
+/**
+ * VITE_ALLOW_AUTH=true shows sign-in; otherwise the site shows a waitlist. Unset means waitlist, so a
+ * deploy that forgets the variable stays closed. (The backend enforces access separately with
+ * WOLF_ACCESS_MODE, so this only decides what the page shows.)
+ */
+const ACCESS_MODE: AccessMode = import.meta.env.VITE_ALLOW_AUTH?.trim().toLowerCase() === 'true' ? 'open' : 'waitlist';
+
 interface AuthState {
   user: User | null;
   loading: boolean;
   enabled: boolean;
   /** 'waitlist' before launch: the site collects signups and only invited people can sign in. */
-  accessMode: AccessMode | null;
+  accessMode: AccessMode;
   /** Why the last sign-in was refused (e.g. not invited yet). */
   accessError: string | null;
   clearAccessError: () => void;
@@ -50,15 +57,7 @@ function readable(error: unknown): string | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(firebaseEnabled);
-  const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.config()
-      .then(c => setAccessMode(c.access_mode))
-      // If the backend can't be reached, a production site stays closed rather than open.
-      .catch(() => setAccessMode(import.meta.env.PROD ? 'waitlist' : 'open'));
-  }, []);
 
   useEffect(() => {
     const auth = firebaseAuth();
@@ -110,8 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearAccessError = useCallback(() => setAccessError(null), []);
   const value = useMemo(
-    () => ({ user, loading, enabled: firebaseEnabled, accessMode, accessError, clearAccessError, signIn, logout }),
-    [user, loading, accessMode, accessError, clearAccessError, signIn, logout],
+    () => ({ user, loading, enabled: firebaseEnabled, accessMode: ACCESS_MODE, accessError, clearAccessError, signIn, logout }),
+    [user, loading, accessError, clearAccessError, signIn, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
