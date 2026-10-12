@@ -1,27 +1,81 @@
 import uuid
+from urllib.parse import parse_qs, urlparse
 
+from conftest import sign_in
 from fastapi.testclient import TestClient
 
 from wolf_api.main import app
 
 
-def test_signup_login_logout_flow(client):
-    email = f"x{uuid.uuid4().hex[:6]}@Example.com"
-    r = client.post("/api/auth/signup", json={"name": "Ada", "email": email, "password": "correct horse"})
-    assert r.status_code == 200 and r.json()["email"] == email.lower()
-    assert client.get("/api/auth/me").json()["name"] == "Ada"
-    assert client.post("/api/auth/signup", json={"name": "Ada", "email": email, "password": "correct horse"}).status_code == 409
+def test_providers_lists_configured_ones(client):
+    assert client.get("/api/auth/providers").json() == {"providers": ["github", "google"]}
 
+
+def test_login_redirects_to_provider(client):
+    r = client.get("/api/auth/google/login", params={"next": "https://evil.example"}, follow_redirects=False)
+    assert r.status_code == 302
+    url = urlparse(r.headers["location"])
+    q = parse_qs(url.query)
+    assert url.netloc == "accounts.google.com"
+    assert q["redirect_uri"] == ["http://localhost:5173/api/auth/google/callback"]
+    assert q["code_challenge_method"] == ["S256"] and q["state"]
+    assert "wolf_oauth" in r.cookies
+    gh = client.get("/api/auth/github/login", follow_redirects=False)
+    assert urlparse(gh.headers["location"]).netloc == "github.com"
+    assert client.get("/api/auth/twitter/login", follow_redirects=False).status_code == 404
+
+
+def test_sign_in_sign_out(client, monkeypatch):
+    sign_in(client, monkeypatch, email="ada@example.com")
+    me = client.get("/api/auth/me").json()
+    assert me["name"] == "Ada Lovelace" and me["email"] == "ada@example.com" and me["avatar_url"]
     client.post("/api/auth/logout")
     assert client.get("/api/auth/me").status_code == 401
-    assert client.post("/api/auth/login", json={"email": email, "password": "wrong"}).status_code == 401
-    assert client.post("/api/auth/login", json={"email": email, "password": "correct horse"}).status_code == 200
-    assert client.get("/api/auth/me").status_code == 200
 
 
-def test_signup_validation(client):
-    assert client.post("/api/auth/signup", json={"name": "A", "email": "nope", "password": "correct horse"}).status_code == 422
-    assert client.post("/api/auth/signup", json={"name": "A", "email": "a@b.co", "password": "short"}).status_code == 422
+def test_rejects_bad_or_missing_state(client, monkeypatch):
+    client.get("/api/auth/github/login", follow_redirects=False)
+    r = client.get("/api/auth/github/callback", params={"code": "the-code", "state": "forged"}, follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("/?auth_error=")
+    assert client.get("/api/auth/me").status_code == 401
+
+    with TestClient(app) as fresh:  # no state cookie at all
+        r = fresh.get("/api/auth/github/callback", params={"code": "x", "state": "y"}, follow_redirects=False)
+        assert "auth_error" in r.headers["location"]
+
+    cancelled = client.get("/api/auth/github/callback", params={"error": "access_denied"}, follow_redirects=False)
+    assert "cancelled" in cancelled.headers["location"]
+
+
+def test_open_redirects_are_blocked(client, monkeypatch):
+    from wolf_api.auth import safe_next
+    assert safe_next("https://evil.example") == "/"
+    assert safe_next("//evil.example") == "/"
+    assert safe_next("/\\evil.example") == "/"
+    assert safe_next("/p/123") == "/p/123"
+
+
+def test_github_and_google_link_by_verified_email(monkeypatch):
+    email = f"{uuid.uuid4().hex[:8]}@example.com"
+    with TestClient(app) as a:
+        sign_in(a, monkeypatch, provider="github", email=email)
+        first = a.get("/api/auth/me").json()
+    with TestClient(app) as b:
+        sign_in(b, monkeypatch, provider="google", email=email)
+        assert b.get("/api/auth/me").json()["id"] == first["id"]
+    # No verified email: never linked, always a separate account.
+    with TestClient(app) as c:
+        sign_in(c, monkeypatch, provider="google", email=None)
+        assert c.get("/api/auth/me").json()["id"] != first["id"]
+
+
+def test_same_identity_returns_same_user(monkeypatch):
+    with TestClient(app) as a:
+        sign_in(a, monkeypatch, uid="gh-42")
+        first = a.get("/api/auth/me").json()["id"]
+    with TestClient(app) as b:
+        sign_in(b, monkeypatch, uid="gh-42")
+        assert b.get("/api/auth/me").json()["id"] == first
 
 
 def test_projects_require_auth(client):
@@ -29,7 +83,7 @@ def test_projects_require_auth(client):
     assert client.post("/api/projects", json={"prompt": "x"}).status_code == 401
 
 
-def test_project_crud_and_ownership(authed):
+def test_project_crud_and_ownership(authed, monkeypatch):
     r = authed.post("/api/projects", json={"prompt": "A habit tracker with daily streaks"})
     assert r.status_code == 201
     project = r.json()
@@ -48,7 +102,7 @@ def test_project_crud_and_ownership(authed):
     assert authed.patch(f"/api/projects/{project['id']}", json={"schema": {"bad": True}}).status_code == 422
 
     with TestClient(app) as other:
-        other.post("/api/auth/signup", json={"name": "Eve", "email": f"e{uuid.uuid4().hex[:6]}@x.io", "password": "correct horse"})
+        sign_in(other, monkeypatch, name="Eve")
         assert other.get(f"/api/projects/{project['id']}").status_code == 404
 
     assert authed.delete(f"/api/projects/{project['id']}").status_code == 204

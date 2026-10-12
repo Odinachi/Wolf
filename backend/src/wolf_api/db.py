@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, create_engine, event
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint, create_engine, event, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from . import config
@@ -28,9 +28,23 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("usr"))
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    # A verified email from a provider, used to link GitHub and Google sign-ins to one account.
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(120))
-    password_hash: Mapped[str] = mapped_column(String(255))
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OAuthAccount(Base):
+    """A GitHub or Google identity that signs in as a user."""
+
+    __tablename__ = "oauth_accounts"
+    __table_args__ = (UniqueConstraint("provider", "provider_user_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("oac"))
+    provider: Mapped[str] = mapped_column(String(16))  # "github" | "google"
+    provider_user_id: Mapped[str] = mapped_column(String(64))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -112,6 +126,12 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def init_db() -> None:
+    existing = inspect(engine)
+    if existing.has_table("users") and "password_hash" in {c["name"] for c in existing.get_columns("users")}:
+        raise RuntimeError(
+            "This database predates social sign-in (it still has password accounts). "
+            f"Delete {config.DATA_DIR / 'wolf.db'} to start fresh."
+        )
     Base.metadata.create_all(engine)
 
 
