@@ -28,33 +28,72 @@ The component catalog is defined once in `web/packages/schema` and exported to
 Requirements: Node 20+, [uv](https://docs.astral.sh/uv/), and optionally the
 [Flutter SDK](https://docs.flutter.dev/get-started/install) to build apps.
 
+**Firebase (sign-in).** Wolf signs people in with GitHub or Google through Firebase Auth.
+Create a project in the [Firebase console](https://console.firebase.google.com/), then:
+
+1. Authentication → Sign-in method: enable **GitHub** and **Google** (only these are accepted).
+   GitHub needs an OAuth app; Firebase shows the callback URL to register with it.
+2. Project settings → Your apps → add a **Web app** and copy its config into `web/.env`.
+3. Put the project id in `backend/.env` (`FIREBASE_PROJECT_ID`).
+
 **Backend**
 
 ```bash
 cd backend
-cp .env.example .env      # add your ANTHROPIC_API_KEY and OAuth app credentials
+cp .env.example .env      # ANTHROPIC_API_KEY, FIREBASE_PROJECT_ID
 uv sync
 uv run uvicorn wolf_api.main:app --reload --port 8000
 ```
-
-Sign-in is **GitHub and Google only**. Create an OAuth app with either (or both) and put the
-credentials in `backend/.env`. The callback URL to register is
-`<WOLF_PUBLIC_URL>/api/auth/github/callback` (or `/google/callback`), which is
-`http://localhost:5173/api/auth/github/callback` in development.
-
-- GitHub: Settings → Developer settings → [OAuth Apps](https://github.com/settings/developers) → New OAuth App
-- Google: Cloud Console → [Credentials](https://console.cloud.google.com/apis/credentials) → Create OAuth client ID → Web application
 
 **Web**
 
 ```bash
 cd web
+cp .env.example .env      # the Firebase web config
 npm install
 npm run dev               # http://localhost:5173, proxies /api to the backend
 ```
 
 If port 8000 is taken, run the backend on another port and start the web app with
 `WOLF_API_PORT=8010 npm run dev`.
+
+## Deploying
+
+The backend runs on [Railway](https://railway.com) (SQLite on a volume), files and backups live in
+Firebase Storage, and the web app runs on [Vercel](https://vercel.com).
+
+**Backend on Railway**
+
+1. New service from this repo, with **Root Directory** `backend` (it builds `backend/Dockerfile`
+   using `backend/railway.json`).
+2. Add a **volume** mounted at `/data`.
+3. Variables:
+   - `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`
+   - `FIREBASE_STORAGE_BUCKET` and `FIREBASE_SERVICE_ACCOUNT` (Firebase → Project settings → Service
+     accounts → Generate new private key; paste the JSON) to store build files in Firebase Storage
+   - `LITESTREAM_BUCKET` (the same bucket) to continuously back up the database; a fresh volume
+     restores from it automatically
+   - `WOLF_CORS_ORIGINS`: your Vercel URL(s)
+   - `WOLF_ACCESS_MODE=waitlist` and `WOLF_ALLOWED_EMAILS=you@example.com` until launch
+   - optional: `WOLF_DAILY_GENERATION_LIMIT` (default 30 AI requests per user per day)
+4. Generate a public domain for the service.
+
+**Web on Vercel**
+
+1. Import the repo with **Root Directory** `web` (settings come from `web/vercel.json`).
+2. Environment variables: the `VITE_FIREBASE_*` values, `VITE_API_URL` (your Railway URL) and
+   `VITE_SITE_URL` (your site's URL, for social previews).
+3. In Firebase → Authentication → Settings → Authorized domains, add your Vercel domain.
+
+**Waitlist.** With `WOLF_ACCESS_MODE=waitlist`, every way in on the landing page opens a waitlist
+form, and the API refuses sign-in for everyone except `WOLF_ALLOWED_EMAILS` (enforced on the server,
+not just hidden in the UI). Signups are stored in the `waitlist` table; to export them from Railway:
+
+```bash
+railway ssh -- sqlite3 -csv -header /data/wolf.db "select email, idea, created_at from waitlist"
+```
+
+Set `WOLF_ACCESS_MODE=open` (or remove it) when you launch.
 
 ## Useful commands
 
