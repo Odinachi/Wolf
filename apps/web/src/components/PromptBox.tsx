@@ -49,9 +49,10 @@ export function PromptBox({ value, onChange, onSubmit, busy, ideas }: Props) {
   }, [value]);
 
   return (
+    <div className="prompt-glow">
     <form
       onSubmit={e => { e.preventDefault(); if (value.trim() && !busy) onSubmit(); }}
-      className="group relative w-full rounded-[28px] bg-white/80 p-2 shadow-[0_1px_2px_rgb(24_24_27/0.04),0_24px_60px_-20px_rgb(76_29_149/0.35)] ring-1 ring-zinc-950/[0.07] backdrop-blur-xl transition focus-within:ring-violet-400/60"
+      className="group relative w-full rounded-[28px] bg-white/95 p-2 shadow-[0_1px_2px_rgb(24_24_27/0.04),0_24px_60px_-20px_rgb(76_29_149/0.35)] backdrop-blur-xl"
     >
       <textarea
         ref={ref}
@@ -79,5 +80,6 @@ export function PromptBox({ value, onChange, onSubmit, busy, ideas }: Props) {
         </button>
       </div>
     </form>
+    </div>
   );
 }

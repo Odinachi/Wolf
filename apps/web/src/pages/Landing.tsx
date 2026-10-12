@@ -2,8 +2,14 @@ import { ArrowRight, Code2, Github, MessageSquareText, MoreHorizontal, MousePoin
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { AuthModal } from '../components/AuthModal';
+import { BuildDemo } from '../components/BuildDemo';
+import { HeroPhones } from '../components/HeroPhones';
 import { Logo } from '../components/Logo';
 import { PromptBox } from '../components/PromptBox';
+import { PromptMarquee } from '../components/PromptMarquee';
+import { Reveal } from '../components/Reveal';
+import { RotatingWord } from '../components/RotatingWord';
+import { Spotlight } from '../components/Spotlight';
 import { UserMenu } from '../components/UserMenu';
 import { WaveBackground } from '../components/WaveBackground';
 import { EXAMPLES, PROMPT_IDEAS } from '../examples';
@@ -14,6 +20,18 @@ import { PhoneThumbnail } from '../renderer/PhoneFrame';
 
 const GITHUB_URL = 'https://github.com/Odinachi/Wolf';
 const PENDING_KEY = 'wolf:pending-prompt';
+const APP_KINDS = ['mobile', 'fitness', 'recipe', 'shopping', 'travel', 'habit'];
+const MARQUEE_ROWS = [
+  PROMPT_IDEAS,
+  [
+    'A meditation app with breathing exercises',
+    'A book club app with reading goals',
+    'A parking app that finds open spots',
+    'A study planner with Pomodoro timers',
+    'A pet adoption app for local shelters',
+    'A travel journal with maps and photos',
+  ],
+];
 
 export function Landing() {
   const { user, loading } = useAuth();
@@ -95,13 +113,14 @@ export function Landing() {
       {/* Hero */}
       <section className="relative isolate flex min-h-[94dvh] flex-col items-center justify-center overflow-hidden px-5 pb-40 pt-28">
         <WaveBackground />
+        <HeroPhones left={EXAMPLES[0]} right={EXAMPLES[2]} />
         <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="relative mb-7 flex items-center gap-2 rounded-full bg-white/70 py-1 pl-1 pr-3 text-[13px] font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-950/5 backdrop-blur transition hover:bg-white animate-[fade-up_600ms_ease_both]">
           <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-white">New</span>
           Open source · Compiles to Flutter
           <ArrowRight size={13} className="text-zinc-400" />
         </a>
         <h1 className="relative max-w-4xl text-center text-[44px] font-semibold leading-[1.02] tracking-[-0.045em] text-zinc-950 sm:text-[68px] animate-[fade-up_700ms_80ms_ease_both]">
-          Build mobile apps
+          Build <RotatingWord words={APP_KINDS} className="text-zinc-950" /> apps
           <br />
           <span className="text-shimmer">by chatting with AI</span>
         </h1>
@@ -111,13 +130,9 @@ export function Landing() {
         <div className="relative mt-9 w-full max-w-2xl animate-[fade-up_700ms_240ms_ease_both]">
           <PromptBox value={prompt} onChange={setPrompt} onSubmit={submit} busy={creating} ideas={PROMPT_IDEAS} />
           {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {PROMPT_IDEAS.slice(0, 4).map(idea => (
-              <button key={idea} onClick={() => setPrompt(idea)} className="rounded-full bg-white/60 px-3.5 py-1.5 text-[13px] text-zinc-600 ring-1 ring-zinc-950/[0.06] backdrop-blur transition hover:bg-white hover:text-zinc-950">
-                {idea}
-              </button>
-            ))}
-          </div>
+        </div>
+        <div className="relative mt-8 w-full max-w-5xl animate-[fade-up_700ms_320ms_ease_both]">
+          <PromptMarquee rows={MARQUEE_ROWS} onPick={setPrompt} />
         </div>
       </section>
 
@@ -136,14 +151,26 @@ export function Landing() {
         </section>
       )}
 
+      {/* Watch it build */}
+      <section className="relative mx-auto max-w-6xl px-5 pt-28">
+        <Reveal className="mx-auto mb-14 max-w-2xl text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">Watch it build</p>
+          <h2 className="mt-3 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">From a sentence to screens in seconds</h2>
+          <p className="mt-4 text-lg text-zinc-600">Wolf plans the app, then builds it piece by piece while you watch. Every change is listed, and every one can be undone.</p>
+        </Reveal>
+        <Reveal>
+          <BuildDemo examples={EXAMPLES} />
+        </Reveal>
+      </section>
+
       {/* Showcase */}
       <section id="showcase" className="mx-auto max-w-7xl px-5 py-28">
-        <div className="mx-auto max-w-2xl text-center">
+        <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">Showcase</p>
           <h2 className="mt-3 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">One sentence in. A whole app out.</h2>
           <p className="mt-4 text-lg text-zinc-600">Every screen below is a real Wolf app, rendered live from the same schema that compiles to Flutter.</p>
-        </div>
-        <div className="mt-16 flex flex-wrap items-end justify-center gap-10 lg:gap-16">
+        </Reveal>
+        <Reveal className="mt-16 flex flex-wrap items-end justify-center gap-10 lg:gap-16" stagger={140}>
           {EXAMPLES.map((ex, i) => (
             <figure key={ex.name} className="group flex flex-col items-center" style={{ animation: `float 7s ease-in-out ${i * -2.3}s infinite` }}>
               <div className={`transition duration-500 group-hover:-translate-y-2 group-hover:rotate-0 ${i === 0 ? '-rotate-3' : i === 2 ? 'rotate-3' : 'lg:-translate-y-8'}`}>
@@ -155,31 +182,31 @@ export function Landing() {
               </figcaption>
             </figure>
           ))}
-        </div>
+        </Reveal>
       </section>
 
       {/* How it works */}
       <section id="how" className="mx-auto max-w-7xl px-5 pb-28">
-        <div className="grid gap-4 md:grid-cols-3">
+        <Reveal className="grid gap-4 md:grid-cols-3" stagger={120}>
           {[
             { icon: MessageSquareText, title: 'Describe it', body: 'Tell Wolf what you want in plain words. It plans the screens, data and navigation, then builds them while you watch.' },
             { icon: MousePointerClick, title: 'Refine it', body: 'Click anything on a phone frame and tell Wolf what to change. Every change can be rolled back.' },
             { icon: Code2, title: 'Ship it', body: 'Wolf compiles your app to clean, idiomatic Flutter for iOS and Android. It’s your code: export it any time.' },
           ].map(({ icon: Icon, title, body }, i) => (
-            <div key={title} className="relative overflow-hidden rounded-3xl bg-white p-7 ring-1 ring-zinc-950/5 transition hover:shadow-xl hover:shadow-violet-500/5">
+            <Spotlight key={title} className="group h-full overflow-hidden rounded-3xl bg-white p-7 ring-1 ring-zinc-950/5 transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-violet-500/10">
               <div className="flex items-center justify-between">
-                <span className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25"><Icon size={20} /></span>
-                <span className="text-5xl font-semibold tracking-tighter text-zinc-100">0{i + 1}</span>
+                <span className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110"><Icon size={20} /></span>
+                <span className="text-5xl font-semibold tracking-tighter text-zinc-100 transition-colors duration-500 group-hover:text-violet-100">0{i + 1}</span>
               </div>
               <h3 className="mt-6 text-lg font-semibold tracking-tight">{title}</h3>
               <p className="mt-2 leading-relaxed text-zinc-600">{body}</p>
-            </div>
+            </Spotlight>
           ))}
-        </div>
+        </Reveal>
 
         <div className="relative mt-16 overflow-hidden rounded-[32px] bg-zinc-950 px-8 py-14 text-center text-white">
-          <div aria-hidden className="absolute inset-0 opacity-70" style={{ background: 'radial-gradient(60% 120% at 20% 120%, #6366F1 0%, transparent 60%), radial-gradient(50% 120% at 80% 120%, #EC4899 0%, transparent 60%)' }} />
-          <Smartphone className="relative mx-auto text-white/80" size={28} />
+          <div aria-hidden className="hero-aurora absolute inset-0 opacity-70" style={{ background: 'radial-gradient(60% 120% at 20% 120%, #6366F1 0%, transparent 60%), radial-gradient(50% 120% at 80% 120%, #EC4899 0%, transparent 60%)' }} />
+          <Smartphone className="relative mx-auto animate-[float_5s_ease-in-out_infinite] text-white/80" size={28} />
           <h2 className="relative mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Your next app is one prompt away</h2>
           <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="relative mt-7 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-100">
             Start building <ArrowRight size={15} />
