@@ -97,7 +97,7 @@ run `WOLF_API_PORT=8010 npm run dev`.
 |----------|:--------:|-------------|
 | `OPENROUTER_API_KEY` | ✅ | Your OpenRouter key |
 | `FIREBASE_PROJECT_ID` | ✅ | Used to verify sign-ins |
-| `WOLF_MODEL` | | Any tool-capable OpenRouter model. Default `anthropic/claude-opus-5.5` |
+| `WOLF_MODEL` | | Any tool-capable OpenRouter model. Default `anthropic/claude-haiku-5.5` |
 | `WOLF_CORS_ORIGINS` | | Comma-separated web app origins. Default `http://localhost:5173` |
 | `WOLF_ACCESS_MODE` | | `open` (default) or `waitlist`, which only lets in `WOLF_ALLOWED_EMAILS` |
 | `WOLF_ALLOWED_EMAILS` | | Comma-separated emails allowed to sign in during the waitlist |
