@@ -36,6 +36,16 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class WaitlistEntry(Base):
+    __tablename__ = "waitlist"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("wl"))
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    # What they want to build (often the prompt they typed on the landing page).
+    idea: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Project(Base):
     __tablename__ = "projects"
 

@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, builds, config, projects
+from . import auth, builds, config, projects, waitlist
 from .db import init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(builds.router)
+app.include_router(waitlist.router)
 
 init_db()
 

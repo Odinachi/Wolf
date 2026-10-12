@@ -14,7 +14,7 @@ from firebase_admin import auth as firebase_auth
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from . import firebase
+from . import config, firebase
 from .db import User, get_db
 
 log = logging.getLogger("wolf.auth")
@@ -47,9 +47,12 @@ def current_user(authorization: str | None = Header(default=None), db: Session =
         raise HTTPException(403, "Wolf only supports signing in with GitHub or Google.")
 
     uid = claims["uid"]
-    user = db.get(User, uid)
     name = claims.get("name") or (claims.get("email") or "Wolf user").split("@")[0]
     email = claims.get("email") if claims.get("email_verified") else None
+    if config.ACCESS_MODE == "waitlist" and (email or "").lower() not in config.ALLOWED_EMAILS:
+        raise HTTPException(403, "Wolf is invite-only for now. Join the waitlist and we'll let you know when it's your turn.")
+
+    user = db.get(User, uid)
     if not user:
         user = User(id=uid, name=name[:120], email=email, avatar_url=claims.get("picture"))
         db.add(user)

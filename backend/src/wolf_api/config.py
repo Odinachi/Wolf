@@ -18,6 +18,11 @@ FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 FIREBASE_SERVICE_ACCOUNT = os.getenv("FIREBASE_SERVICE_ACCOUNT", "")
 FIREBASE_STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "")
 MAX_AGENT_TURNS = int(os.getenv("WOLF_MAX_AGENT_TURNS", "30"))
+
+# "open": anyone can sign in. "waitlist": the site collects waitlist signups and only the verified
+# emails in WOLF_ALLOWED_EMAILS can sign in (set this in production until launch).
+ACCESS_MODE = os.getenv("WOLF_ACCESS_MODE", "open").strip().lower()
+ALLOWED_EMAILS = {e.strip().lower() for e in os.getenv("WOLF_ALLOWED_EMAILS", "").split(",") if e.strip()}
 # AI requests each user may make per rolling 24 hours (0 = unlimited). Protects your Anthropic bill.
 DAILY_GENERATION_LIMIT = int(os.getenv("WOLF_DAILY_GENERATION_LIMIT", "30"))
 # The component catalog, exported from web/packages/schema by its tests (see catalog.test.ts).
