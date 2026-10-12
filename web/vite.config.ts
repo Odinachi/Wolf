@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => {
   // In development, /api goes to the local backend. Override with WOLF_API_PORT if 8000 is taken.
   const apiPort = env.WOLF_API_PORT || '8000'
   return {
+    // Only these variables are exposed to browser code (they end up in the public bundle). Listed
+    // by full name so a secret such as FIREBASE_SERVICE_ACCOUNT can never leak in by accident.
+    envPrefix: ['ALLOW_AUTH', 'API_URL', 'SITE_URL', 'FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID', 'FIREBASE_APP_ID'],
     plugins: [react(), tailwindcss(), absoluteSocialImages(env.SITE_URL)],
     server: {
       proxy: { '/api': `http://localhost:${apiPort}` },
