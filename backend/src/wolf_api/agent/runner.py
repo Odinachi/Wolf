@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 
 from .. import config
 from .accounting import TurnUsage
+from .aliases import IdAliases
 from .context import system_message, with_cache_breakpoints
 from .prompts import system_prompt, user_turn
 from .tools import ToolError, execute, tool_definitions
@@ -80,6 +81,7 @@ async def run_agent(
         return
     schema = copy.deepcopy(schema)
     tools = tool_definitions()
+    ids = IdAliases()  # the model sees short ids (s1, c4, ...) instead of UUIDs
 
     # Earlier turns are replayed as plain text; only this turn carries the project snapshot.
     history_msgs = [{"role": m["role"], "content": m["content"]} for m in history if m.get("content")]
@@ -90,7 +92,7 @@ async def run_agent(
     messages: list[dict[str, Any]] = [
         system_message(system_prompt()),
         *history_msgs,
-        {"role": "user", "content": user_turn(prompt, schema, selection)},
+        {"role": "user", "content": ids.shorten(user_turn(prompt, schema, selection), schema)},
     ]
 
     # Brand-new apps get more reasoning than small edits.
@@ -167,17 +169,17 @@ async def run_agent(
         for tool_call in assistant["tool_calls"]:
             fn = tool_call["function"]
             try:
-                args = json.loads(fn["arguments"])
+                args = ids.expand(json.loads(fn["arguments"]))
                 outcome = execute(schema, fn["name"], args)
             except json.JSONDecodeError:
                 content = "Invalid JSON in tool arguments. Send the call again with valid JSON."
             except ToolError as e:
-                content = f"Error: {e}"
+                content = ids.shorten(f"Error: {e}", schema)
             else:
                 if outcome.change:  # read-only tools (get_screen) change nothing
                     changed = True
                     yield _event("change", text=outcome.change)
-                content = json.dumps(outcome.result, separators=(",", ":"))
+                content = ids.shorten(json.dumps(outcome.result, separators=(",", ":")), schema)
             messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": content})
         if changed:
             yield _event("schema", schema=copy.deepcopy(schema))

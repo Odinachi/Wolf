@@ -294,3 +294,23 @@ def test_failed_runs_record_their_outcome(authed, monkeypatch):
     authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
     run = authed.get(f"/api/projects/{project['id']}/runs").json()[0]
     assert run["outcome"] == "declined" and run["prompt_tokens"] == 5000 and run["cost_usd"] is None
+
+
+def test_model_works_with_short_ids(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    fake = FakeClient([
+        # The model only ever sees aliases: s1 is the Home screen, c1 its root.
+        turn(calls=[("t1", "add_components", {"screen_id": "s1", "parent_id": "c1", "components": [{"type": "Text", "props": {"text": "Hi"}}]})]),
+        turn(texts=["Added."]),
+    ])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "add a greeting"})
+
+    first_user = text_of(fake.requests[0]["messages"][1]["content"])
+    assert '"id":"s1"' in first_user
+    import re
+    assert not re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-", first_user)
+    result = text_of(fake.requests[1]["messages"][-1]["content"])
+    assert '"id":"c2"' in result  # the new Text got the next alias, not a UUID
+    saved = authed.get(f"/api/projects/{project['id']}").json()
+    assert saved["schema"]["screens"][0]["root"]["children"][0]["props"]["text"] == "Hi"
