@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
     envPrefix: ['ALLOW_AUTH', 'API_URL', 'SITE_URL', 'FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID', 'FIREBASE_APP_ID'],
     plugins: [react(), tailwindcss(), absoluteSocialImages(env.SITE_URL)],
     server: {
+      // Fixed port: it's the origin the backend allows (WOLF_CORS_ORIGINS). Fail instead of
+      // silently moving to another port if 5173 is taken.
+      port: 5173,
+      strictPort: true,
       proxy: { '/api': `http://localhost:${apiPort}` },
     },
   }
