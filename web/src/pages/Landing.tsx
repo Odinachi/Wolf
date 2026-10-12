@@ -42,11 +42,11 @@ export function Landing() {
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState(() => sessionStorage.getItem(PENDING_KEY) ?? '');
   const [auth, setAuth] = useState<{ open: boolean; reason?: string }>({ open: false });
-  const [waitlist, setWaitlist] = useState<{ open: boolean; idea?: string }>({ open: false });
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
   // Before launch, every way in leads to the waitlist; afterwards (and locally) to sign-in.
-  const join = useCallback((reason?: string, idea?: string) => {
+  const join = useCallback((reason?: string) => {
     if (accessMode === 'open') setAuth({ open: true, reason });
-    else setWaitlist({ open: true, idea });
+    else setWaitlistOpen(true);
   }, [accessMode]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,15 +91,15 @@ export function Landing() {
     if (!text) return;
     if (!user) {
       // Keep the prompt through sign-in so nothing typed is lost.
-      sessionStorage.setItem(PENDING_KEY, text);
-      join('Sign in with GitHub or Google and Wolf will start building your app right away.', text);
+      if (accessMode === 'open') sessionStorage.setItem(PENDING_KEY, text);
+      join('Sign in with GitHub or Google and Wolf will start building your app right away.');
       return;
     }
     build(text);
   };
 
   const closeAuth = useCallback(() => setAuth(a => ({ ...a, open: false })), []);
-  const closeWaitlist = useCallback(() => setWaitlist(w => ({ ...w, open: false })), []);
+  const closeWaitlist = useCallback(() => setWaitlistOpen(false), []);
 
   const removeProject = async (id: string) => {
     if (!confirm('Delete this app? This can’t be undone.')) return;
@@ -258,12 +258,7 @@ export function Landing() {
         onSignInFailed={() => sessionStorage.removeItem(RESUME_KEY)}
         onClose={closeAuth}
       />
-      <WaitlistModal
-        open={waitlist.open}
-        idea={waitlist.idea}
-        onClose={closeWaitlist}
-        onSignIn={() => { setWaitlist({ open: false }); setAuth({ open: true }); }}
-      />
+      <WaitlistModal open={waitlistOpen} onClose={closeWaitlist} />
     </div>
   );
 }

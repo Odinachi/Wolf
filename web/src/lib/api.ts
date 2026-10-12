@@ -2,7 +2,14 @@ import type { AppSchema, Screen, Theme } from '@wolf/schema';
 import { idToken } from './firebase';
 
 /** The backend's origin; empty means same origin (the dev server proxies /api). */
-export const API_URL = (import.meta.env.API_URL ?? '').replace(/\/$/, '');
+export const API_URL = normalizeOrigin(import.meta.env.API_URL);
+
+/** "api.example.com/" -> "https://api.example.com" (a missing scheme would make it a relative path). */
+function normalizeOrigin(value: string | undefined): string {
+  const url = (value ?? '').trim().replace(/\/+$/, '');
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
 
 export async function authHeaders(): Promise<Record<string, string>> {
   const token = await idToken();
@@ -74,7 +81,7 @@ const json = (body: unknown) => JSON.stringify(body);
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
-  joinWaitlist: (body: { email: string; idea?: string; website?: string }) => request<{ ok: boolean }>('/api/waitlist', { method: 'POST', body: json(body) }),
+  joinWaitlist: (body: { email: string; website?: string }) => request<{ message: string }>('/api/waitlist', { method: 'POST', body: json(body) }),
 
   projects: () => request<ProjectSummary[]>('/api/projects'),
   createProject: (prompt: string) => request<Project>('/api/projects', { method: 'POST', body: json({ prompt }) }),
