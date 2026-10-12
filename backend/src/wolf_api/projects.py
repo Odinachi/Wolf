@@ -206,6 +206,8 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
                 kind, data = e["event"], e["data"]
                 if kind == "text":
                     text += data["delta"]
+                elif kind == "discard":  # a failed attempt is being retried: drop its partial text
+                    text = ""
                 elif kind == "change":
                     changes.append(data["text"])
                 elif kind == "schema":

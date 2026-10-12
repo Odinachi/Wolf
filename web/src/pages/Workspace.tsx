@@ -72,6 +72,7 @@ export function Workspace() {
     try {
       await streamChat(id, { prompt, selection: sel ?? undefined }, {
         onText: d => setLive(l => l && { ...l, text: l.text + d }),
+        onDiscard: () => setLive(l => l && { ...l, text: '' }),
         onChange: c => setLive(l => l && { ...l, changes: [...l.changes, c] }),
         onSchema: s => setSchema(s),
         onError: msg => setLive(l => l && { ...l, error: msg }),

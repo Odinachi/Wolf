@@ -4,6 +4,8 @@ import { API_URL, ApiError, authHeaders, type ChatMessage } from './api';
 export interface ChatHandlers {
   onStart?: (data: { user_message_id: string; version_id: string }) => void;
   onText?: (delta: string) => void;
+  /** A failed attempt is being retried: drop the text streamed so far. */
+  onDiscard?: () => void;
   onChange?: (text: string) => void;
   onSchema?: (schema: AppSchema) => void;
   onError?: (message: string) => void;
@@ -48,6 +50,7 @@ export async function streamChat(
       switch (event) {
         case 'start': handlers.onStart?.(payload); break;
         case 'text': handlers.onText?.(payload.delta); break;
+        case 'discard': handlers.onDiscard?.(); break;
         case 'change': handlers.onChange?.(payload.text); break;
         case 'schema': handlers.onSchema?.(payload.schema); break;
         case 'error': handlers.onError?.(payload.message); break;

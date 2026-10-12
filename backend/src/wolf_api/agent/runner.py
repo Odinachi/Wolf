@@ -1,26 +1,43 @@
-"""The tool-use loop: a prompt in, a stream of schema updates out. Runs on OpenRouter."""
+"""The agent harness: a prompt in, a stream of schema updates out. Runs on OpenRouter.
+
+The orchestration follows "The Harness Effect" (arXiv 2607.06906): the loop, not the model, sets the
+token bill, so it is built for it.
+- Accounting: every turn's tokens, cache hits, cost and time are measured (accounting.py).
+- Cache-shape discipline: an append-only transcript with sliding cache breakpoints (context.py).
+- Context offload: outline snapshots, get_screen on demand, short per-run ids (context.py, aliases.py).
+- Structured compaction: long runs fold into a checkpoint with a fresh snapshot (context.py).
+- Failure-spend governance: typed failures, bounded retries, a fallback route plan, discarded
+  attempts and a circuit breaker for repeated failing calls (failures.py).
+"""
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
-import openai
 from openai import AsyncOpenAI
 
 from .. import config
 from .accounting import TurnUsage
 from .aliases import IdAliases
 from .context import checkpoint_message, system_message, tail_start, transcript_chars, with_cache_breakpoints
+from .failures import Failure, backoff_seconds, call_signature, cap, classify, parse_arguments, route_plan
 from .prompts import system_prompt, user_turn
 from .tools import ToolError, execute, tool_definitions
 
 log = logging.getLogger("wolf.agent")
 
+RETRIES_PER_MODEL = 2  # attempts per model before falling through to the next one
+MAX_TOOL_CALLS_PER_TURN = 12
+REPEAT_FAILURE_LIMIT = 3  # identical failing calls before the circuit breaker stops the run
+
 _client: AsyncOpenAI | None = None
+_sleep = asyncio.sleep  # replaced in tests
 
 
 class MissingApiKey(RuntimeError):
@@ -45,16 +62,39 @@ def _event(name: str, **data: Any) -> dict[str, Any]:
     return {"event": name, "data": data}
 
 
-def _error_message(e: openai.APIStatusError) -> str:
-    if e.status_code == 401:
-        return "The server's OpenRouter API key is invalid."
-    if e.status_code == 402:
-        return "The OpenRouter account is out of credits."
-    if e.status_code == 429:
-        return "The AI is busy right now. Try again in a moment."
-    if e.status_code == 404:
-        return f"The model '{config.MODEL}' isn't available on OpenRouter."
-    return f"The AI request failed ({e.status_code})."
+@dataclass
+class Attempt:
+    """What one model call produced. Discarded entirely if the stream fails part-way."""
+
+    text: str = ""
+    calls: dict[int, dict[str, str]] = field(default_factory=dict)
+    finish: str | None = None
+    usage: Any = None
+
+
+async def _stream(client: AsyncOpenAI, model: str, request: dict[str, Any], attempt: Attempt) -> AsyncIterator[str]:
+    """One streamed model call. Yields text deltas and fills `attempt`; tools never run from here."""
+    stream = await client.chat.completions.create(model=model, **request)
+    async for chunk in stream:
+        if getattr(chunk, "usage", None):
+            attempt.usage = chunk.usage
+        if not chunk.choices:
+            continue
+        choice = chunk.choices[0]
+        delta = choice.delta
+        if delta.content:
+            attempt.text += delta.content
+            yield delta.content
+        for tc in delta.tool_calls or []:
+            call = attempt.calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+            if tc.id:
+                call["id"] = tc.id
+            if tc.function and tc.function.name:
+                call["name"] += tc.function.name
+            if tc.function and tc.function.arguments:
+                call["arguments"] += tc.function.arguments
+        if choice.finish_reason:
+            attempt.finish = choice.finish_reason
 
 
 async def run_agent(
@@ -70,7 +110,9 @@ async def run_agent(
     - change {text}: one human-readable change was made
     - schema {schema}: the schema after a batch of changes (persist and render this)
     - text {delta}: streamed reply text
-    - usage {...}: tokens, cache hits, cost and time for one model turn (see accounting.py)
+    - discard {}: drop the streamed text so far (a failed attempt is being retried)
+    - usage {...}: tokens, cache hits, cost and time for one model turn (internal)
+    - compacted {folded}: older turns were folded into a checkpoint (internal)
     - error {message, kind}: the run stopped early (changes so far are kept); kind is a typed outcome
     - done {}
     """
@@ -83,7 +125,7 @@ async def run_agent(
     tools = tool_definitions()
     ids = IdAliases()  # the model sees short ids (s1, c4, ...) instead of UUIDs
 
-    # Earlier turns are replayed as plain text; only this turn carries the project snapshot.
+    # Earlier chat turns are replayed as plain text; only this request carries the project snapshot.
     history_msgs = [{"role": m["role"], "content": m["content"]} for m in history if m.get("content")]
     while history_msgs and history_msgs[0]["role"] != "user":
         history_msgs.pop(0)
@@ -96,6 +138,7 @@ async def run_agent(
     ]
     opening = len(messages)  # system + earlier chat + this request; the run's own turns follow
     changes: list[str] = []
+    failing_calls: dict[str, int] = {}
 
     # Brand-new apps get more reasoning than small edits.
     is_new_app = sum(len(s["root"]["children"]) for s in schema["screens"]) == 0
@@ -114,60 +157,57 @@ async def run_agent(
                 log.info("Compacted %d messages into a checkpoint (%d changes so far)", folded, len(changes))
                 yield _event("compacted", folded=folded)
 
-        text = ""
-        calls: dict[int, dict[str, str]] = {}
-        finish = None
-        usage = None
+        request = {
+            "messages": with_cache_breakpoints(messages),
+            "tools": tools,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            "max_tokens": 32000,
+            "extra_body": extra_body,
+        }
+
+        # One turn: try each model in the route plan, retrying transient failures with backoff.
+        attempt: Attempt | None = None
+        used_model = ""
+        last_failure: Failure | None = None
         started = time.monotonic()
-        try:
-            stream = await client.chat.completions.create(
-                model=config.MODEL,
-                messages=with_cache_breakpoints(messages),
-                tools=tools,
-                stream=True,
-                stream_options={"include_usage": True},
-                max_tokens=32000,
-                extra_body=extra_body,
-            )
-            async for chunk in stream:
-                if getattr(chunk, "usage", None):
-                    usage = chunk.usage
-                if not chunk.choices:
-                    continue
-                choice = chunk.choices[0]
-                delta = choice.delta
-                if delta.content:
-                    text += delta.content
-                    yield _event("text", delta=delta.content)
-                for tc in delta.tool_calls or []:
-                    call = calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-                    if tc.id:
-                        call["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        call["name"] += tc.function.name
-                    if tc.function and tc.function.arguments:
-                        call["arguments"] += tc.function.arguments
-                if choice.finish_reason:
-                    finish = choice.finish_reason
-        except openai.APIStatusError as e:
-            log.warning("OpenRouter error %s: %s", e.status_code, e.message)
-            yield _event("error", kind=f"http_{e.status_code}", message=_error_message(e))
-            return
-        except openai.APIConnectionError:
-            yield _event("error", kind="connection", message="Couldn't reach OpenRouter.")
+        for model in route_plan():
+            for n in range(RETRIES_PER_MODEL):
+                candidate = Attempt()
+                streamed = False
+                try:
+                    async for delta in _stream(client, model, request, candidate):
+                        streamed = True
+                        yield _event("text", delta=delta)
+                except Exception as e:  # classified below; nothing from this attempt is kept
+                    last_failure = classify(e)
+                    log.warning("Model call failed on %s (attempt %d): %s %s", model, n + 1, last_failure.kind, e)
+                    if streamed:
+                        yield _event("discard")
+                    if last_failure.retryable and n + 1 < RETRIES_PER_MODEL:
+                        await _sleep(backoff_seconds(n, last_failure))
+                        continue
+                    break
+                attempt, used_model = candidate, model
+                break
+            if attempt is not None or (last_failure and not last_failure.fall_through):
+                break
+        if attempt is None:
+            failure = last_failure or classify(RuntimeError("no model available"))
+            yield _event("error", kind=failure.kind, message=failure.message)
             return
 
-        yield _event("usage", **TurnUsage.from_usage(config.MODEL, usage, int((time.monotonic() - started) * 1000), len(calls)).as_dict())
+        yield _event("usage", **TurnUsage.from_usage(used_model, attempt.usage, int((time.monotonic() - started) * 1000), len(attempt.calls)).as_dict())
 
-        if finish == "content_filter":
+        if attempt.finish == "content_filter":
             yield _event("error", kind="declined", message="The AI declined this request.")
             return
-        if finish == "length" and not calls:
+        if attempt.finish == "length" and not attempt.calls:
             yield _event("error", kind="output_limit", message="The AI ran out of room mid-change. Try a smaller request.")
             return
 
-        ordered = [calls[i] for i in sorted(calls)]
-        assistant: dict[str, Any] = {"role": "assistant", "content": text or None}
+        ordered = [attempt.calls[i] for i in sorted(attempt.calls)]
+        assistant: dict[str, Any] = {"role": "assistant", "content": attempt.text or None}
         if ordered:
             assistant["tool_calls"] = [
                 {"id": c["id"] or f"call_{i}", "type": "function", "function": {"name": c["name"], "arguments": c["arguments"] or "{}"}}
@@ -178,24 +218,47 @@ async def run_agent(
             break
 
         changed = False
-        for tool_call in assistant["tool_calls"]:
+        stuck: str | None = None
+        for i, tool_call in enumerate(assistant["tool_calls"]):
             fn = tool_call["function"]
-            try:
-                args = ids.expand(json.loads(fn["arguments"]))
-                outcome = execute(schema, fn["name"], args)
-            except json.JSONDecodeError:
-                content = "Invalid JSON in tool arguments. Send the call again with valid JSON."
-            except ToolError as e:
-                content = ids.shorten(f"Error: {e}", schema)
+            if i >= MAX_TOOL_CALLS_PER_TURN:
+                content = f"Not run: at most {MAX_TOOL_CALLS_PER_TURN} calls per turn. Send this call again next turn."
             else:
-                if outcome.change:  # read-only tools (get_screen) change nothing
-                    changed = True
-                    changes.append(outcome.change)
-                    yield _event("change", text=outcome.change)
-                content = ids.shorten(json.dumps(outcome.result, separators=(",", ":")), schema)
+                content, failed_signature = None, None
+                try:
+                    args = ids.expand(parse_arguments(fn["arguments"]))
+                    outcome = execute(schema, fn["name"], args)
+                except json.JSONDecodeError:
+                    content = "Invalid JSON in tool arguments. Send the call again with valid JSON."
+                    if attempt.finish == "length":
+                        content += " Your output was cut off: send smaller batches (fewer components per call)."
+                    failed_signature = f"{fn['name']}:invalid-json"
+                except ToolError as e:
+                    content = cap(ids.shorten(f"Error: {e}", schema))
+                    failed_signature = call_signature(fn["name"], args)
+                else:
+                    if outcome.change:  # read-only tools (get_screen) change nothing
+                        changed = True
+                        changes.append(outcome.change)
+                        yield _event("change", text=outcome.change)
+                    content = ids.shorten(json.dumps(outcome.result, separators=(",", ":")), schema)
+
+                # Circuit breaker: the same failing call again gets a nudge, then stops the run.
+                if failed_signature:
+                    failing_calls[failed_signature] = failing_calls.get(failed_signature, 0) + 1
+                    count = failing_calls[failed_signature]
+                    if count >= REPEAT_FAILURE_LIMIT:
+                        stuck = fn["name"]
+                    elif count == REPEAT_FAILURE_LIMIT - 1:
+                        content += " This exact call has now failed twice: change the arguments or take a different approach."
             messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": content})
+
         if changed:
             yield _event("schema", schema=copy.deepcopy(schema))
+        if stuck:
+            log.warning("Circuit breaker: %s failed %d times with identical arguments", stuck, REPEAT_FAILURE_LIMIT)
+            yield _event("error", kind="doom_loop", message="The AI got stuck repeating a step that kept failing, so it was stopped. Changes so far are kept.")
+            return
     else:
         yield _event("error", kind="max_turns", message="The AI took too many steps and was stopped. Changes so far are kept.")
         return

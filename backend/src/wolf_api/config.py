@@ -9,6 +9,8 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 MODEL = os.getenv("WOLF_MODEL", "anthropic/claude-haiku-5.5")
+# Models to fall back to (comma-separated, in order) when the main one is unavailable or keeps failing.
+FALLBACK_MODELS = [m.strip() for m in os.getenv("WOLF_FALLBACK_MODELS", "").split(",") if m.strip()]
 # Send a reasoning effort to models that support it (WOLF_REASONING=off to never send it).
 REASONING = os.getenv("WOLF_REASONING", "on").strip().lower() != "off"
 # Shown to OpenRouter for app attribution (optional).

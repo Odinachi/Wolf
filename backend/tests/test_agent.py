@@ -340,3 +340,125 @@ def test_long_runs_are_compacted(authed, monkeypatch):
     assert all(m["tool_call_id"] in call_ids for m in last if m["role"] == "tool")
     saved = authed.get(f"/api/projects/{project['id']}").json()
     assert len(saved["schema"]["screens"]) == 9 and saved["messages"][-1]["content"] == "All done."
+
+
+# ─── Failure-spend governance ────────────────────────────────────────────────
+
+import httpx as _httpx  # noqa: E402
+import openai as _openai  # noqa: E402
+
+
+def api_error(status):
+    response = _httpx.Response(status, request=_httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"))
+    return _openai.APIStatusError(f"HTTP {status}", response=response, body=None)
+
+
+class ScriptedClient:
+    """Each request takes the next item: an exception to raise, a list of chunks to stream, or
+    ("break", chunks) to stream chunks and then fail mid-stream."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.requests = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    async def _create(self, **kwargs):
+        self.requests.append({**kwargs, "messages": [dict(m) for m in kwargs["messages"]]})
+        item = self.script.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        breaks = isinstance(item, tuple)
+        chunks = item[1] if breaks else item
+
+        async def stream():
+            for c in chunks:
+                yield c
+            if breaks:
+                raise _openai.APIConnectionError(request=_httpx.Request("POST", "https://openrouter.ai"))
+        return stream()
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    async def instant(_):
+        return None
+    monkeypatch.setattr(runner, "_sleep", instant)
+
+
+def chat(authed, project, prompt="x"):
+    r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": prompt})
+    return r.text
+
+
+def test_transient_failures_are_retried(authed, monkeypatch, no_sleep):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    fake = ScriptedClient([api_error(429), turn(texts=["ok"])])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    body = chat(authed, project)
+    assert "event: done" in body and len(fake.requests) == 2
+    assert authed.get(f"/api/projects/{project['id']}/runs").json()[0]["outcome"] == "completed"
+
+
+def test_falls_through_to_the_next_model(authed, monkeypatch, no_sleep):
+    from wolf_api import config
+    monkeypatch.setattr(config, "FALLBACK_MODELS", ["backup/model"])
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    fake = ScriptedClient([api_error(503), api_error(503), turn(texts=["ok"])])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    assert "event: done" in chat(authed, project)
+    assert [r["model"] for r in fake.requests] == [config.MODEL, config.MODEL, "backup/model"]
+    assert authed.get(f"/api/projects/{project['id']}/runs").json()[0]["model"] == "backup/model"
+
+
+def test_permanent_failures_are_not_retried(authed, monkeypatch, no_sleep):
+    from wolf_api import config
+    monkeypatch.setattr(config, "FALLBACK_MODELS", ["backup/model"])
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    fake = ScriptedClient([api_error(401)])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    assert "API key is invalid" in chat(authed, project) and len(fake.requests) == 1
+    assert authed.get(f"/api/projects/{project['id']}/runs").json()[0]["outcome"] == "auth"
+
+
+def test_a_broken_stream_is_discarded_and_retried(authed, monkeypatch, no_sleep):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    home = project["schema"]["screens"][0]
+    partial = turn(texts=["Half a "], calls=[("t1", "set_theme", {"primary": "#000000"})])[:-1]  # no finish
+    fake = ScriptedClient([("break", partial), turn(texts=["Done."])])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    body = chat(authed, project)
+    events = [b.split("\n")[0].removeprefix("event: ") for b in body.strip().split("\n\n")]
+    assert events[:4] == ["start", "text", "discard", "text"]
+    saved = authed.get(f"/api/projects/{project['id']}").json()
+    assert saved["schema"]["theme"]["primary"] != "#000000"  # nothing from the broken attempt ran
+    assert saved["messages"][-1]["content"] == "Done."
+    assert home
+
+
+def test_circuit_breaker_stops_repeated_failing_calls(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    bad = ("b", "set_theme", {"primary": "green"})
+    fake = FakeClient([turn(calls=[bad]), turn(calls=[bad]), turn(calls=[bad]), turn(texts=["never"])])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    body = chat(authed, project)
+    assert "stuck repeating" in body and len(fake.requests) == 3
+    assert "failed twice" in text_of(fake.requests[2]["messages"][-1]["content"])
+    assert authed.get(f"/api/projects/{project['id']}/runs").json()[0]["outcome"] == "doom_loop"
+
+
+def test_tool_calls_per_turn_are_capped(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    calls = [(f"c{i}", "create_screen", {"name": f"S{i}"}) for i in range(14)]
+    fake = FakeClient([turn(calls=calls), turn(texts=["ok"])])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    chat(authed, project)
+    results = [m for m in fake.requests[1]["messages"] if m["role"] == "tool"]
+    assert len(results) == 14 and sum("Not run" in text_of(m["content"]) for m in results) == 2
+    assert len(authed.get(f"/api/projects/{project['id']}").json()["schema"]["screens"]) == 13
+
+
+def test_double_encoded_and_fenced_arguments_are_recovered():
+    from wolf_api.agent.failures import parse_arguments
+    assert parse_arguments(json.dumps(json.dumps({"a": 1}))) == {"a": 1}
+    assert parse_arguments('```json\n{"a": 1}\n```') == {"a": 1}
+    assert parse_arguments("") == {}
