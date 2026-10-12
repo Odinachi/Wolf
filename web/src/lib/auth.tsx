@@ -8,13 +8,20 @@ import {
   signOut,
 } from 'firebase/auth';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, type AuthProviderId, type User } from './api';
+import { ApiError, api, type AuthProviderId, type User } from './api';
 import { firebaseAuth, firebaseEnabled } from './firebase';
+
+export type AccessMode = 'open' | 'waitlist';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   enabled: boolean;
+  /** 'waitlist' before launch: the site collects signups and only invited people can sign in. */
+  accessMode: AccessMode | null;
+  /** Why the last sign-in was refused (e.g. not invited yet). */
+  accessError: string | null;
+  clearAccessError: () => void;
   /** Signs in with a popup (falling back to a redirect if popups are blocked). Throws a readable error. */
   signIn: (provider: AuthProviderId) => Promise<void>;
   logout: () => Promise<void>;
@@ -43,6 +50,15 @@ function readable(error: unknown): string | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(firebaseEnabled);
+  const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
+  const [accessError, setAccessError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.config()
+      .then(c => setAccessMode(c.access_mode))
+      // If the backend can't be reached, a production site stays closed rather than open.
+      .catch(() => setAccessMode(import.meta.env.PROD ? 'waitlist' : 'open'));
+  }, []);
 
   useEffect(() => {
     const auth = firebaseAuth();
@@ -56,8 +72,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         setUser(await api.me());
-      } catch {
+        setAccessError(null);
+      } catch (e) {
         setUser(null);
+        if (e instanceof ApiError && e.status === 403) {
+          // Signed in with Firebase but not allowed in (e.g. not invited yet): don't stay half signed in.
+          setAccessError(e.message);
+          await signOut(auth);
+        }
       } finally {
         setLoading(false);
       }
@@ -86,7 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, enabled: firebaseEnabled, signIn, logout }), [user, loading, signIn, logout]);
+  const clearAccessError = useCallback(() => setAccessError(null), []);
+  const value = useMemo(
+    () => ({ user, loading, enabled: firebaseEnabled, accessMode, accessError, clearAccessError, signIn, logout }),
+    [user, loading, accessMode, accessError, clearAccessError, signIn, logout],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

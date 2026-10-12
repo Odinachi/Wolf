@@ -74,6 +74,8 @@ const json = (body: unknown) => JSON.stringify(body);
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
+  config: () => request<{ access_mode: 'open' | 'waitlist' }>('/api/config'),
+  joinWaitlist: (body: { email: string; idea?: string; website?: string }) => request<{ ok: boolean }>('/api/waitlist', { method: 'POST', body: json(body) }),
 
   projects: () => request<ProjectSummary[]>('/api/projects'),
   createProject: (prompt: string) => request<Project>('/api/projects', { method: 'POST', body: json({ prompt }) }),

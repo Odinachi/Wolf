@@ -32,7 +32,7 @@ const PROVIDERS: Record<AuthProviderId, { label: string; icon: ReactNode; classN
 };
 
 export function AuthModal({ open, reason, onBeforeSignIn, onSignInFailed, onClose }: Props) {
-  const { signIn, enabled, user } = useAuth();
+  const { signIn, enabled, user, accessError, clearAccessError } = useAuth();
   const [busy, setBusy] = useState<AuthProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,10 +40,19 @@ export function AuthModal({ open, reason, onBeforeSignIn, onSignInFailed, onClos
     if (!open) return;
     setBusy(null);
     setError(null);
+    clearAccessError();
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, clearAccessError]);
+
+  // Sign-in was refused by the server (e.g. not invited yet): stop the spinner and say why.
+  useEffect(() => {
+    if (accessError) {
+      setBusy(null);
+      onSignInFailed?.();
+    }
+  }, [accessError, onSignInFailed]);
 
   // Close once signed in.
   useEffect(() => {
@@ -55,6 +64,7 @@ export function AuthModal({ open, reason, onBeforeSignIn, onSignInFailed, onClos
   const go = async (provider: AuthProviderId) => {
     setBusy(provider);
     setError(null);
+    clearAccessError();
     onBeforeSignIn?.();
     try {
       await signIn(provider);
@@ -99,7 +109,7 @@ export function AuthModal({ open, reason, onBeforeSignIn, onSignInFailed, onClos
               </button>
             ))
           )}
-          {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</p>}
+          {(error || accessError) && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error || accessError}</p>}
         </div>
         <p className="mt-6 text-center text-xs leading-relaxed text-zinc-400">
           Wolf only reads your name, email and avatar.

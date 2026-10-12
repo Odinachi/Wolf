@@ -9,6 +9,7 @@ import { PromptMarquee } from '../components/PromptMarquee';
 import { Reveal } from '../components/Reveal';
 import { RotatingWord } from '../components/RotatingWord';
 import { Spotlight } from '../components/Spotlight';
+import { WaitlistModal } from '../components/WaitlistModal';
 import { UserMenu } from '../components/UserMenu';
 import { WaveBackground } from '../components/WaveBackground';
 import { EXAMPLES, PROMPT_IDEAS } from '../examples';
@@ -37,10 +38,16 @@ const MARQUEE_ROWS = [
 ];
 
 export function Landing() {
-  const { user, loading } = useAuth();
+  const { user, loading, accessMode } = useAuth();
   const navigate = useNavigate();
   const [prompt, setPrompt] = useState(() => sessionStorage.getItem(PENDING_KEY) ?? '');
   const [auth, setAuth] = useState<{ open: boolean; reason?: string }>({ open: false });
+  const [waitlist, setWaitlist] = useState<{ open: boolean; idea?: string }>({ open: false });
+  // Before launch, every way in leads to the waitlist; afterwards (and locally) to sign-in.
+  const join = useCallback((reason?: string, idea?: string) => {
+    if (accessMode === 'open') setAuth({ open: true, reason });
+    else setWaitlist({ open: true, idea });
+  }, [accessMode]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -85,13 +92,14 @@ export function Landing() {
     if (!user) {
       // Keep the prompt through sign-in so nothing typed is lost.
       sessionStorage.setItem(PENDING_KEY, text);
-      setAuth({ open: true, reason: 'Sign in with GitHub or Google and Wolf will start building your app right away.' });
+      join('Sign in with GitHub or Google and Wolf will start building your app right away.', text);
       return;
     }
     build(text);
   };
 
   const closeAuth = useCallback(() => setAuth(a => ({ ...a, open: false })), []);
+  const closeWaitlist = useCallback(() => setWaitlist(w => ({ ...w, open: false })), []);
 
   const removeProject = async (id: string) => {
     if (!confirm('Delete this app? This can’t be undone.')) return;
@@ -115,8 +123,10 @@ export function Landing() {
           <div className="flex items-center gap-2">
             {loading ? null : user ? <UserMenu /> : (
               <>
-                <button onClick={() => setAuth({ open: true })} className="hidden rounded-full px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-950/5 min-[400px]:block">Log in</button>
-                <button onClick={() => setAuth({ open: true })} className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Get started</button>
+                <button onClick={() => join()} className="hidden rounded-full px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-950/5 min-[400px]:block">Log in</button>
+                <button onClick={() => join()} className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">
+                  {accessMode === 'waitlist' ? 'Join waitlist' : 'Get started'}
+                </button>
               </>
             )}
           </div>
@@ -243,6 +253,12 @@ export function Landing() {
         onBeforeSignIn={() => { if (sessionStorage.getItem(PENDING_KEY)) sessionStorage.setItem(RESUME_KEY, '1'); }}
         onSignInFailed={() => sessionStorage.removeItem(RESUME_KEY)}
         onClose={closeAuth}
+      />
+      <WaitlistModal
+        open={waitlist.open}
+        idea={waitlist.idea}
+        onClose={closeWaitlist}
+        onSignIn={() => { setWaitlist({ open: false }); setAuth({ open: true }); }}
       />
     </div>
   );
