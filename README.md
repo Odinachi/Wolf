@@ -40,7 +40,7 @@ Create a project in the [Firebase console](https://console.firebase.google.com/)
 
 ```bash
 cd backend
-cp .env.example .env      # ANTHROPIC_API_KEY, FIREBASE_PROJECT_ID
+cp .env.example .env      # OPENROUTER_API_KEY, FIREBASE_PROJECT_ID
 uv sync
 uv run uvicorn wolf_api.main:app --reload --port 8000
 ```
@@ -57,6 +57,13 @@ npm run dev               # http://localhost:5173, proxies /api to the backend
 If port 8000 is taken, run the backend on another port and start the web app with
 `WOLF_API_PORT=8010 npm run dev`.
 
+## AI models
+
+Wolf talks to models through [OpenRouter](https://openrouter.ai), so you can use any model that
+supports tool calling. The default is `anthropic/claude-opus-5.5`; set `WOLF_MODEL` in
+`backend/.env` to try others (for example `anthropic/claude-sonnet-5.5` for lower cost). Set an
+OpenRouter credit limit, and keep `WOLF_DAILY_GENERATION_LIMIT` on, to cap spending.
+
 ## Deploying
 
 The backend runs on [Railway](https://railway.com) (SQLite on a volume), files and backups live in
@@ -68,7 +75,7 @@ Firebase Storage, and the web app runs on [Vercel](https://vercel.com).
    using `backend/railway.json`).
 2. Add a **volume** mounted at `/data`.
 3. Variables:
-   - `ANTHROPIC_API_KEY`, `FIREBASE_PROJECT_ID`
+   - `OPENROUTER_API_KEY`, `FIREBASE_PROJECT_ID` (and optionally `WOLF_MODEL`)
    - `FIREBASE_STORAGE_BUCKET` and `FIREBASE_SERVICE_ACCOUNT` (Firebase → Project settings → Service
      accounts → Generate new private key; paste the JSON) to store build files in Firebase Storage
    - `LITESTREAM_BUCKET` (the same bucket) to continuously back up the database; a fresh volume

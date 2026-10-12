@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -15,9 +16,9 @@ def run(schema, name, args):
 
 
 def test_tool_definitions_are_well_formed():
-    defs = tool_definitions()
+    defs = [d["function"] for d in tool_definitions()]
     assert len({d["name"] for d in defs}) == len(defs)
-    assert all(d["description"] and d["input_schema"]["type"] == "object" for d in defs)
+    assert all(d["description"] and d["parameters"]["type"] == "object" for d in defs)
 
 
 def test_build_a_screen():
@@ -94,53 +95,58 @@ def test_move_and_models():
         run(schema, "create_data_model", {"name": "user"})
 
 
-# ─── Loop + chat endpoint with a fake Anthropic client ───────────────────────
+# ─── Loop + chat endpoint with a fake OpenRouter (OpenAI-compatible) client ───
 
 
-class FakeStream:
-    def __init__(self, response, texts):
-        self.response, self.texts = response, texts
+def chunk(content=None, tool_calls=None, finish=None):
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+    return SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=finish)])
 
-    async def __aenter__(self):
-        return self
 
-    async def __aexit__(self, *exc):
-        return False
+def call_chunks(index, id_, name, args):
+    """A tool call streamed in pieces, like real providers do."""
+    raw = json.dumps(args)
+    half = len(raw) // 2
+    return [
+        chunk(tool_calls=[SimpleNamespace(index=index, id=id_, function=SimpleNamespace(name=name, arguments=raw[:half]))]),
+        chunk(tool_calls=[SimpleNamespace(index=index, id=None, function=SimpleNamespace(name=None, arguments=raw[half:]))]),
+    ]
 
-    @property
-    def text_stream(self):
-        async def gen():
-            for t in self.texts:
-                yield t
-        return gen()
 
-    async def get_final_message(self):
-        return self.response
+def turn(texts=(), calls=(), finish=None):
+    """One model turn: text pieces and tool calls as (id, name, args)."""
+    chunks = [chunk(content=t) for t in texts]
+    for i, (id_, name, args) in enumerate(calls):
+        chunks += call_chunks(i, id_, name, args)
+    chunks.append(chunk(finish=finish or ("tool_calls" if calls else "stop")))
+    return chunks
 
 
 class FakeClient:
-    def __init__(self, responses):
-        self.responses = list(responses)
+    """Replays scripted turns and records the requests it received."""
+
+    def __init__(self, turns):
+        self.turns = list(turns)
         self.requests = []
-        self.beta = SimpleNamespace(messages=SimpleNamespace(stream=self._stream))
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
-    def _stream(self, **kwargs):
-        self.requests.append({**kwargs, "messages": list(kwargs["messages"])})
-        content, texts, stop = self.responses.pop(0)
-        return FakeStream(SimpleNamespace(content=content, stop_reason=stop), texts)
+    async def _create(self, **kwargs):
+        self.requests.append({**kwargs, "messages": [dict(m) for m in kwargs["messages"]]})
+        chunks = self.turns.pop(0)
 
-
-def tool_use(id_, name, input_):
-    return SimpleNamespace(type="tool_use", id=id_, name=name, input=input_)
+        async def stream():
+            for c in chunks:
+                yield c
+        return stream()
 
 
 def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     project = authed.post("/api/projects", json={"prompt": "plant app"}).json()
     home = project["schema"]["screens"][0]
     fake = FakeClient([
-        ([tool_use("t1", "set_theme", {"primary": "#2E7D32"}), tool_use("t2", "set_theme", {"primary": "green"})], [], "tool_use"),
-        ([tool_use("t3", "add_components", {"screen_id": home["id"], "parent_id": home["root"]["id"], "components": [{"type": "Text", "props": {"text": "Plants"}}]})], [], "tool_use"),
-        ([SimpleNamespace(type="text", text="Done!")], ["Made it ", "green."], "end_turn"),
+        turn(calls=[("t1", "set_theme", {"primary": "#2E7D32"}), ("t2", "set_theme", {"primary": "green"})]),
+        turn(calls=[("t3", "add_components", {"screen_id": home["id"], "parent_id": home["root"]["id"], "components": [{"type": "Text", "props": {"text": "Plants"}}]})]),
+        turn(texts=["Made it ", "green."]),
     ])
     monkeypatch.setattr(runner, "get_client", lambda: fake)
 
@@ -149,11 +155,19 @@ def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     events = [block.split("\n")[0].removeprefix("event: ") for block in r.text.strip().split("\n\n")]
     assert events == ["start", "change", "schema", "change", "schema", "text", "text", "done", "message"]
 
-    # The invalid call went back to the model as an error alongside the valid one.
-    results = fake.requests[1]["messages"][-1]["content"]
-    assert [x.get("is_error", False) for x in results] == [False, True]
-    assert "<selection>" in fake.requests[0]["messages"][0]["content"]
-    assert fake.requests[0]["output_config"] == {"effort": "high"}  # empty app -> new-app effort
+    # The request is OpenAI-shaped: system prompt first, tools as functions, streamed.
+    first = fake.requests[0]
+    assert first["model"] and first["stream"] is True
+    assert first["messages"][0]["role"] == "system" and first["messages"][0]["content"][0]["cache_control"]
+    assert "<selection>" in first["messages"][1]["content"]
+    assert first["tools"][0]["type"] == "function"
+    assert first["extra_body"] == {"reasoning": {"effort": "high"}}  # empty app -> new-app effort
+
+    # Split tool-call arguments were reassembled; the invalid call went back as an error result.
+    second = fake.requests[1]["messages"]
+    assert second[-3]["role"] == "assistant" and [c["id"] for c in second[-3]["tool_calls"]] == ["t1", "t2"]
+    assert second[-2] == {"role": "tool", "tool_call_id": "t1", "content": '{"ok": true}'}
+    assert second[-1]["tool_call_id"] == "t2" and "hex color" in second[-1]["content"]
 
     saved = authed.get(f"/api/projects/{project['id']}").json()
     assert saved["schema"]["theme"]["primary"] == "#2E7D32"
@@ -167,35 +181,71 @@ def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     assert restored["schema"]["theme"]["primary"] == "#6750A4"
 
 
+def test_invalid_tool_json_is_reported_to_the_model(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    broken = [chunk(tool_calls=[SimpleNamespace(index=0, id="b1", function=SimpleNamespace(name="set_theme", arguments='{"primary": '))]), chunk(finish="tool_calls")]
+    fake = FakeClient([broken, turn(texts=["ok"])])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
+    assert "Invalid JSON" in fake.requests[1]["messages"][-1]["content"]
+
+
 def test_chat_reports_errors(authed, monkeypatch):
     project = authed.post("/api/projects", json={"name": "X"}).json()
-    monkeypatch.setattr(runner, "get_client", lambda: FakeClient([([], [], "refusal")]))
+    monkeypatch.setattr(runner, "get_client", lambda: FakeClient([turn(finish="content_filter")]))
     r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
     assert "event: error" in r.text and "declined" in r.text
     saved = authed.get(f"/api/projects/{project['id']}").json()
     assert "declined" in saved["messages"][-1]["content"]
 
 
-def test_missing_api_key_is_explained(authed, monkeypatch):
+def test_openrouter_errors_are_explained(authed, monkeypatch):
+    import httpx
+    import openai
+
     project = authed.post("/api/projects", json={"name": "X"}).json()
 
-    class NoKey:
-        beta = SimpleNamespace(messages=SimpleNamespace(stream=lambda **_: (_ for _ in ()).throw(TypeError("no auth"))))
+    class OutOfCredits:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
-    monkeypatch.setattr(runner, "get_client", lambda: NoKey())
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        async def create(self, **_):
+            response = httpx.Response(402, request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"))
+            raise openai.APIStatusError("Insufficient credits", response=response, body=None)
+
+    monkeypatch.setattr(runner, "get_client", lambda: OutOfCredits())
     r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
-    assert "ANTHROPIC_API_KEY" in r.text
+    assert "out of credits" in r.text
+
+
+def test_missing_api_key_is_explained(authed, monkeypatch):
+    from wolf_api import config
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
+    runner._client = None
+    r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
+    assert "OPENROUTER_API_KEY" in r.text
 
 
 def test_daily_generation_limit(authed, monkeypatch):
     from wolf_api import config
     monkeypatch.setattr(config, "DAILY_GENERATION_LIMIT", 2)
     project = authed.post("/api/projects", json={"name": "X"}).json()
-    done = [SimpleNamespace(type="text", text="ok")]
-    monkeypatch.setattr(runner, "get_client", lambda: FakeClient([(done, ["ok"], "end_turn")] * 2))
+    monkeypatch.setattr(runner, "get_client", lambda: FakeClient([turn(texts=["ok"]), turn(texts=["ok"])]))
     for _ in range(2):
         assert authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"}).status_code == 200
     r = authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
     assert r.status_code == 429 and "limit of 2" in r.json()["detail"]
+
+
+def test_tool_schemas_have_no_refs():
+    def walk(node):
+        if isinstance(node, dict):
+            assert "$ref" not in node and "$defs" not in node
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    for tool in tool_definitions():
+        walk(tool["function"]["parameters"])

@@ -576,14 +576,35 @@ TOOLS: dict[str, tuple[type[BaseModel], Callable[[dict, Any], Outcome]]] = {
 }
 
 
+MAX_INLINE_DEPTH = 3  # how deep recursive component trees are spelled out in tool schemas (deeper levels are still validated)
+
+
+def _inline_refs(node: Any, defs: dict[str, Any], depth: int = 0) -> Any:
+    """Replaces $ref with the referenced schema, since some models behind OpenRouter reject $ref.
+    Recursive shapes (a component's children) are unrolled to MAX_INLINE_DEPTH levels."""
+    if isinstance(node, dict):
+        if "$ref" in node:
+            name = node["$ref"].rsplit("/", 1)[-1]
+            if depth >= MAX_INLINE_DEPTH:
+                return {"type": "object", "description": f"A {name} (same shape as above)."}
+            return _inline_refs(defs[name], defs, depth + 1)
+        return {k: _inline_refs(v, defs, depth) for k, v in node.items() if k not in ("$defs", "title")}
+    if isinstance(node, list):
+        return [_inline_refs(v, defs, depth) for v in node]
+    return node
+
+
 def tool_definitions() -> list[dict[str, Any]]:
-    """Tool definitions in a stable order, which keeps the prompt cache warm."""
+    """Tools in OpenAI function-calling format (as OpenRouter expects), in a stable order."""
     defs = []
     for name, (model, _) in TOOLS.items():
         schema = model.model_json_schema()
-        schema.pop("title", None)
         schema.pop("description", None)
-        defs.append({"name": name, "description": (model.__doc__ or "").strip(), "input_schema": schema})
+        parameters = _inline_refs(schema, schema.get("$defs", {}))
+        defs.append({
+            "type": "function",
+            "function": {"name": name, "description": (model.__doc__ or "").strip(), "parameters": parameters},
+        })
     return defs
 
 

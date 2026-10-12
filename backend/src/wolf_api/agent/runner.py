@@ -1,4 +1,4 @@
-"""The tool-use loop: a prompt in, a stream of schema updates out."""
+"""The tool-use loop: a prompt in, a stream of schema updates out. Runs on OpenRouter."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import json
 import logging
 from typing import Any, AsyncIterator
 
-import anthropic
+import openai
+from openai import AsyncOpenAI
 
 from .. import config
 from .prompts import system_prompt, user_turn
@@ -15,18 +16,41 @@ from .tools import ToolError, execute, tool_definitions
 
 log = logging.getLogger("wolf.agent")
 
-_client: anthropic.AsyncAnthropic | None = None
+_client: AsyncOpenAI | None = None
 
 
-def get_client() -> anthropic.AsyncAnthropic:
+class MissingApiKey(RuntimeError):
+    pass
+
+
+def get_client() -> AsyncOpenAI:
     global _client
+    if not config.OPENROUTER_API_KEY:
+        raise MissingApiKey("OPENROUTER_API_KEY is not set.")
     if _client is None:
-        _client = anthropic.AsyncAnthropic()
+        _client = AsyncOpenAI(
+            api_key=config.OPENROUTER_API_KEY,
+            base_url=config.OPENROUTER_BASE_URL,
+            # Optional attribution headers OpenRouter uses for its app rankings.
+            default_headers={"HTTP-Referer": config.SITE_URL, "X-Title": "Wolf"},
+        )
     return _client
 
 
 def _event(name: str, **data: Any) -> dict[str, Any]:
     return {"event": name, "data": data}
+
+
+def _error_message(e: openai.APIStatusError) -> str:
+    if e.status_code == 401:
+        return "The server's OpenRouter API key is invalid."
+    if e.status_code == 402:
+        return "The OpenRouter account is out of credits."
+    if e.status_code == 429:
+        return "The AI is busy right now. Try again in a moment."
+    if e.status_code == 404:
+        return f"The model '{config.MODEL}' isn't available on OpenRouter."
+    return f"The AI request failed ({e.status_code})."
 
 
 async def run_agent(
@@ -35,7 +59,7 @@ async def run_agent(
     schema: dict,
     history: list[dict[str, str]],
     selection: dict | None = None,
-    client: anthropic.AsyncAnthropic | None = None,
+    client: AsyncOpenAI | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Edits a copy of `schema` and yields events:
 
@@ -45,81 +69,104 @@ async def run_agent(
     - error {message}: the run stopped early (changes so far are kept)
     - done {}
     """
-    client = client or get_client()
+    try:
+        client = client or get_client()
+    except MissingApiKey:
+        yield _event("error", message="The server has no OpenRouter API key. Add OPENROUTER_API_KEY to backend/.env and restart the API.")
+        return
     schema = copy.deepcopy(schema)
     tools = tool_definitions()
 
     # Earlier turns are replayed as plain text; only this turn carries the project snapshot.
-    messages: list[Any] = [{"role": m["role"], "content": m["content"]} for m in history if m.get("content")]
-    while messages and messages[0]["role"] != "user":
-        messages.pop(0)
-    messages.append({"role": "user", "content": user_turn(prompt, schema, selection)})
+    history_msgs = [{"role": m["role"], "content": m["content"]} for m in history if m.get("content")]
+    while history_msgs and history_msgs[0]["role"] != "user":
+        history_msgs.pop(0)
+    messages: list[dict[str, Any]] = [
+        # cache_control lets providers that support prompt caching (Anthropic, Gemini via OpenRouter)
+        # reuse the tools + instructions across the loop's turns; others ignore it.
+        {"role": "system", "content": [{"type": "text", "text": system_prompt(), "cache_control": {"type": "ephemeral"}}]},
+        *history_msgs,
+        {"role": "user", "content": user_turn(prompt, schema, selection)},
+    ]
 
-    # Brand-new apps get more thinking than small edits.
+    # Brand-new apps get more reasoning than small edits.
     is_new_app = sum(len(s["root"]["children"]) for s in schema["screens"]) == 0
-    effort = "high" if is_new_app else "medium"
+    extra_body = {"reasoning": {"effort": "high" if is_new_app else "medium"}} if config.REASONING else {}
 
     for _ in range(config.MAX_AGENT_TURNS):
+        text = ""
+        calls: dict[int, dict[str, str]] = {}
+        finish = None
         try:
-            async with client.beta.messages.stream(
+            stream = await client.chat.completions.create(
                 model=config.MODEL,
-                max_tokens=64000,
-                system=system_prompt(),
-                tools=tools,
                 messages=messages,
-                thinking={"type": "adaptive"},
-                output_config={"effort": effort},
-                cache_control={"type": "ephemeral"},
-                # If a request is declined for safety reasons, the API retries it on a fallback model.
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-            ) as stream:
-                async for text in stream.text_stream:
-                    yield _event("text", delta=text)
-                response = await stream.get_final_message()
-        except anthropic.AuthenticationError:
-            yield _event("error", message="The server's Anthropic API key is missing or invalid.")
+                tools=tools,
+                stream=True,
+                max_tokens=32000,
+                extra_body=extra_body,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if delta.content:
+                    text += delta.content
+                    yield _event("text", delta=delta.content)
+                for tc in delta.tool_calls or []:
+                    call = calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                    if tc.id:
+                        call["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        call["name"] += tc.function.name
+                    if tc.function and tc.function.arguments:
+                        call["arguments"] += tc.function.arguments
+                if choice.finish_reason:
+                    finish = choice.finish_reason
+        except openai.APIStatusError as e:
+            log.warning("OpenRouter error %s: %s", e.status_code, e.message)
+            yield _event("error", message=_error_message(e))
             return
-        except anthropic.RateLimitError:
-            yield _event("error", message="The AI is busy right now. Try again in a moment.")
-            return
-        except anthropic.APIStatusError as e:
-            log.exception("Anthropic API error")
-            yield _event("error", message=f"The AI request failed ({e.status_code}).")
-            return
-        except anthropic.APIConnectionError:
-            yield _event("error", message="Couldn't reach the AI service.")
+        except openai.APIConnectionError:
+            yield _event("error", message="Couldn't reach OpenRouter.")
             return
 
-        # Appended unchanged (thinking and fallback blocks included).
-        messages.append({"role": "assistant", "content": response.content})
-
-        if response.stop_reason == "refusal":
+        if finish == "content_filter":
             yield _event("error", message="The AI declined this request.")
             return
-        if response.stop_reason == "max_tokens":
+        if finish == "length" and not calls:
             yield _event("error", message="The AI ran out of room mid-change. Try a smaller request.")
             return
 
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
-        if not tool_uses:
+        ordered = [calls[i] for i in sorted(calls)]
+        assistant: dict[str, Any] = {"role": "assistant", "content": text or None}
+        if ordered:
+            assistant["tool_calls"] = [
+                {"id": c["id"] or f"call_{i}", "type": "function", "function": {"name": c["name"], "arguments": c["arguments"] or "{}"}}
+                for i, c in enumerate(ordered)
+            ]
+        messages.append(assistant)
+        if not ordered:
             break
 
-        results = []
         changed = False
-        for block in tool_uses:
+        for tool_call in assistant["tool_calls"]:
+            fn = tool_call["function"]
             try:
-                outcome = execute(schema, block.name, block.input)
+                args = json.loads(fn["arguments"])
+                outcome = execute(schema, fn["name"], args)
+            except json.JSONDecodeError:
+                content = "Invalid JSON in tool arguments. Send the call again with valid JSON."
             except ToolError as e:
-                results.append({"type": "tool_result", "tool_use_id": block.id, "content": str(e), "is_error": True})
-                continue
-            changed = True
-            yield _event("change", text=outcome.change)
-            results.append({"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(outcome.result)})
+                content = f"Error: {e}"
+            else:
+                changed = True
+                yield _event("change", text=outcome.change)
+                content = json.dumps(outcome.result)
+            messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": content})
         if changed:
             yield _event("schema", schema=copy.deepcopy(schema))
-        # All results for one assistant turn go back in a single user message.
-        messages.append({"role": "user", "content": results})
     else:
         yield _event("error", message="The AI took too many steps and was stopped. Changes so far are kept.")
         return
