@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import time
 import zipfile
 from datetime import datetime, timedelta
 from typing import Any, AsyncIterator, Literal
@@ -20,7 +21,8 @@ from wolf_flutter import generate_project
 from . import config
 from .agent.runner import run_agent
 from .auth import current_user
-from .db import Build, Message, Project, SessionLocal, User, Version, get_db, utcnow
+from .agent.accounting import RunUsage
+from .db import AgentRun, Build, Message, Project, SessionLocal, User, Version, get_db, utcnow
 from .schema import SchemaShape, blank_schema, name_from_prompt
 
 log = logging.getLogger("wolf.projects")
@@ -190,12 +192,14 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
     db.add_all([version, user_msg])
     db.commit()
     schema = project.schema
+    user_id = user.id
     _running.add(project_id)
 
     async def stream() -> AsyncIterator[str]:
         # The request's DB session closes once the response starts, so the stream uses its own.
         session = SessionLocal()
         text, changes, error = "", [], None
+        usage, outcome, started = RunUsage(), "stopped", time.monotonic()
         try:
             yield _sse("start", {"user_message_id": user_msg.id, "version_id": version.id})
             async for e in run_agent(prompt=body.prompt, schema=schema, history=history, selection=body.selection):
@@ -212,9 +216,16 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
                         session.commit()
                 elif kind == "error":
                     error = data["message"]
+                    outcome = data.get("kind", "error")
+                elif kind == "done":
+                    outcome = "completed"
+                elif kind == "usage":
+                    usage.add(data)
+                    continue  # internal accounting, not sent to the browser
                 yield _sse(kind, data)
         except Exception:
             log.exception("AI run failed")
+            outcome = "crash"
             error = "Something went wrong while generating. Check the server logs."
             yield _sse("error", {"message": error})
         finally:
@@ -224,12 +235,50 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
                 content += f"\n\n{error}"
             msg = Message(project_id=project_id, role="assistant", content=content, changes=changes, version_id=version.id)
             session.add(msg)
+            run = AgentRun(
+                project_id=project_id, user_id=user_id, model=(usage.turns[-1]["model"] if usage.turns else config.MODEL),
+                outcome=outcome, turn_count=len(usage.turns), prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens, cached_tokens=usage.cached_tokens, cost_usd=usage.cost,
+                duration_ms=int((time.monotonic() - started) * 1000), changes=len(changes), turns=usage.turns,
+            )
+            session.add(run)
             session.commit()
+            log.info(
+                "AI run %s: %s, %d turns, %d in (%d cached, %.0f%%) / %d out tokens, cost %s, %d changes, %.1fs",
+                run.id, outcome, run.turn_count, run.prompt_tokens, run.cached_tokens, usage.cache_hit_rate * 100,
+                run.completion_tokens, f"${run.cost_usd:.4f}" if run.cost_usd is not None else "n/a", run.changes,
+                run.duration_ms / 1000,
+            )
             session.close()
             _running.discard(project_id)
         yield _sse("message", {"id": msg.id, "content": content, "changes": changes, "version_id": version.id})
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ─── AI run accounting ───────────────────────────────────────────────────────
+
+
+class RunOut(BaseModel):
+    id: str
+    model: str
+    outcome: str
+    turn_count: int
+    prompt_tokens: int
+    completion_tokens: int
+    cached_tokens: int
+    cost_usd: float | None
+    duration_ms: int
+    changes: int
+    created_at: datetime
+
+
+@router.get("/{project_id}/runs", response_model=list[RunOut])
+def list_runs(project_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Tokens, cache hits, cost and outcome of this project's recent AI runs."""
+    owned(project_id, user, db)
+    rows = db.scalars(select(AgentRun).where(AgentRun.project_id == project_id).order_by(AgentRun.created_at.desc()).limit(50)).all()
+    return [RunOut.model_validate(r, from_attributes=True) for r in rows]
 
 
 # ─── Versions ────────────────────────────────────────────────────────────────

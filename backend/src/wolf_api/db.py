@@ -81,6 +81,29 @@ class Version(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AgentRun(Base):
+    """Accounting for one AI run: what it cost and how it ended (see agent/accounting.py)."""
+
+    __tablename__ = "agent_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("run"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    model: Mapped[str] = mapped_column(String(120))
+    # completed | stopped | missing_key | declined | output_limit | max_turns | http_<status> | ...
+    outcome: Mapped[str] = mapped_column(String(32))
+    turn_count: Mapped[int] = mapped_column(default=0)
+    prompt_tokens: Mapped[int] = mapped_column(default=0)
+    completion_tokens: Mapped[int] = mapped_column(default=0)
+    cached_tokens: Mapped[int] = mapped_column(default=0)
+    cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    duration_ms: Mapped[int] = mapped_column(default=0)
+    changes: Mapped[int] = mapped_column(default=0)
+    # Per-turn detail: [{prompt_tokens, completion_tokens, cached_tokens, cost, duration_ms, tool_calls, model}]
+    turns: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class Build(Base):
     __tablename__ = "builds"
 

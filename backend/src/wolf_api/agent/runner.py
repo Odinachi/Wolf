@@ -5,12 +5,14 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import time
 from typing import Any, AsyncIterator
 
 import openai
 from openai import AsyncOpenAI
 
 from .. import config
+from .accounting import TurnUsage
 from .prompts import system_prompt, user_turn
 from .tools import ToolError, execute, tool_definitions
 
@@ -66,13 +68,14 @@ async def run_agent(
     - change {text}: one human-readable change was made
     - schema {schema}: the schema after a batch of changes (persist and render this)
     - text {delta}: streamed reply text
-    - error {message}: the run stopped early (changes so far are kept)
+    - usage {...}: tokens, cache hits, cost and time for one model turn (see accounting.py)
+    - error {message, kind}: the run stopped early (changes so far are kept); kind is a typed outcome
     - done {}
     """
     try:
         client = client or get_client()
     except MissingApiKey:
-        yield _event("error", message="The server has no OpenRouter API key. Add OPENROUTER_API_KEY to backend/.env and restart the API.")
+        yield _event("error", kind="missing_key", message="The server has no OpenRouter API key. Add OPENROUTER_API_KEY to backend/.env and restart the API.")
         return
     schema = copy.deepcopy(schema)
     tools = tool_definitions()
@@ -91,22 +94,29 @@ async def run_agent(
 
     # Brand-new apps get more reasoning than small edits.
     is_new_app = sum(len(s["root"]["children"]) for s in schema["screens"]) == 0
-    extra_body = {"reasoning": {"effort": "high" if is_new_app else "medium"}} if config.REASONING else {}
+    extra_body: dict[str, Any] = {"usage": {"include": True}}  # OpenRouter reports cost per call
+    if config.REASONING:
+        extra_body["reasoning"] = {"effort": "high" if is_new_app else "medium"}
 
     for _ in range(config.MAX_AGENT_TURNS):
         text = ""
         calls: dict[int, dict[str, str]] = {}
         finish = None
+        usage = None
+        started = time.monotonic()
         try:
             stream = await client.chat.completions.create(
                 model=config.MODEL,
                 messages=messages,
                 tools=tools,
                 stream=True,
+                stream_options={"include_usage": True},
                 max_tokens=32000,
                 extra_body=extra_body,
             )
             async for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
                 if not chunk.choices:
                     continue
                 choice = chunk.choices[0]
@@ -126,17 +136,19 @@ async def run_agent(
                     finish = choice.finish_reason
         except openai.APIStatusError as e:
             log.warning("OpenRouter error %s: %s", e.status_code, e.message)
-            yield _event("error", message=_error_message(e))
+            yield _event("error", kind=f"http_{e.status_code}", message=_error_message(e))
             return
         except openai.APIConnectionError:
-            yield _event("error", message="Couldn't reach OpenRouter.")
+            yield _event("error", kind="connection", message="Couldn't reach OpenRouter.")
             return
 
+        yield _event("usage", **TurnUsage.from_usage(config.MODEL, usage, int((time.monotonic() - started) * 1000), len(calls)).as_dict())
+
         if finish == "content_filter":
-            yield _event("error", message="The AI declined this request.")
+            yield _event("error", kind="declined", message="The AI declined this request.")
             return
         if finish == "length" and not calls:
-            yield _event("error", message="The AI ran out of room mid-change. Try a smaller request.")
+            yield _event("error", kind="output_limit", message="The AI ran out of room mid-change. Try a smaller request.")
             return
 
         ordered = [calls[i] for i in sorted(calls)]
@@ -168,7 +180,7 @@ async def run_agent(
         if changed:
             yield _event("schema", schema=copy.deepcopy(schema))
     else:
-        yield _event("error", message="The AI took too many steps and was stopped. Changes so far are kept.")
+        yield _event("error", kind="max_turns", message="The AI took too many steps and was stopped. Changes so far are kept.")
         return
 
     yield _event("done")

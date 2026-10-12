@@ -113,12 +113,21 @@ def call_chunks(index, id_, name, args):
     ]
 
 
-def turn(texts=(), calls=(), finish=None):
-    """One model turn: text pieces and tool calls as (id, name, args)."""
+def usage_chunk(prompt, completion, cached=0, cost=None):
+    """The final chunk OpenRouter sends with stream_options.include_usage: no choices, just usage."""
+    details = SimpleNamespace(cached_tokens=cached)
+    usage = SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion, prompt_tokens_details=details, cost=cost)
+    return SimpleNamespace(choices=[], usage=usage)
+
+
+def turn(texts=(), calls=(), finish=None, usage=None):
+    """One model turn: text pieces and tool calls as (id, name, args), optionally a usage chunk."""
     chunks = [chunk(content=t) for t in texts]
     for i, (id_, name, args) in enumerate(calls):
         chunks += call_chunks(i, id_, name, args)
     chunks.append(chunk(finish=finish or ("tool_calls" if calls else "stop")))
+    if usage:
+        chunks.append(usage_chunk(*usage))
     return chunks
 
 
@@ -161,7 +170,8 @@ def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     assert first["messages"][0]["role"] == "system" and first["messages"][0]["content"][0]["cache_control"]
     assert "<selection>" in first["messages"][1]["content"]
     assert first["tools"][0]["type"] == "function"
-    assert first["extra_body"] == {"reasoning": {"effort": "high"}}  # empty app -> new-app effort
+    assert first["extra_body"] == {"usage": {"include": True}, "reasoning": {"effort": "high"}}  # empty app -> new-app effort
+    assert first["stream_options"] == {"include_usage": True}
 
     # Split tool-call arguments were reassembled; the invalid call went back as an error result.
     second = fake.requests[1]["messages"]
@@ -249,3 +259,30 @@ def test_tool_schemas_have_no_refs():
                 walk(v)
     for tool in tool_definitions():
         walk(tool["function"]["parameters"])
+
+
+def test_runs_are_accounted(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    home = project["schema"]["screens"][0]
+    fake = FakeClient([
+        turn(calls=[("t1", "set_theme", {"primary": "#2E7D32"})], usage=(8000, 300, 6000, 0.0012)),
+        turn(texts=["Done."], usage=(8400, 40, 8000, 0.0004)),
+    ])
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "green"})
+
+    runs = authed.get(f"/api/projects/{project['id']}/runs").json()
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["outcome"] == "completed" and run["turn_count"] == 2 and run["changes"] == 1
+    assert (run["prompt_tokens"], run["completion_tokens"], run["cached_tokens"]) == (16400, 340, 14000)
+    assert abs(run["cost_usd"] - 0.0016) < 1e-9
+    assert run["model"]
+
+
+def test_failed_runs_record_their_outcome(authed, monkeypatch):
+    project = authed.post("/api/projects", json={"name": "X"}).json()
+    monkeypatch.setattr(runner, "get_client", lambda: FakeClient([turn(finish="content_filter", usage=(5000, 10))]))
+    authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
+    run = authed.get(f"/api/projects/{project['id']}/runs").json()[0]
+    assert run["outcome"] == "declined" and run["prompt_tokens"] == 5000 and run["cost_usd"] is None
