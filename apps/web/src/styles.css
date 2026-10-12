@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: #fcfcfd;
+}
+
+::selection {
+  background: rgb(167 139 250 / 0.35);
+}
+
+/* Material icons (names match Flutter's Icons.*) */
+.material-icons-round {
+  font-family: 'Material Icons Round';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+.wolf-scroll { scrollbar-width: none; }
+.wolf-scroll::-webkit-scrollbar { display: none; }
+
+/* Hero aurora: slow drifting color under the waves. */
+.hero-aurora {
+  background:
+    radial-gradient(40% 50% at 18% 100%, rgb(99 102 241 / 0.32), transparent 70%),
+    radial-gradient(45% 55% at 55% 105%, rgb(236 72 153 / 0.28), transparent 70%),
+    radial-gradient(35% 45% at 88% 100%, rgb(251 146 60 / 0.3), transparent 70%);
+  animation: aurora 16s ease-in-out infinite alternate;
+}
+
+.text-shimmer {
+  background: linear-gradient(90deg, #4f46e5, #9333ea, #ec4899, #f97316, #9333ea, #4f46e5);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 8s linear infinite;
+}
+
+.text-shimmer-muted {
+  background: linear-gradient(90deg, #a1a1aa 0%, #18181b 50%, #a1a1aa 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.8s linear infinite;
+}
+
+.canvas-grid {
+  background-color: #fafafa;
+  background-image: radial-gradient(circle, rgb(24 24 27 / 0.12) 1px, transparent 1.2px);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #ececf0 0%, #f6f4ff 40%, #ececf0 80%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes aurora {
+  from { transform: translate3d(-3%, 2%, 0) scale(1); }
+  to { transform: translate3d(3%, -2%, 0) scale(1.08); }
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes frame-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.88); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

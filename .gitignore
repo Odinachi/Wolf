@@ -22,3 +22,6 @@ apps/api/data/
 .vscode/*
 !.vscode/extensions.json
 *.log
+
+# Local agent/editor tooling
+.claude/

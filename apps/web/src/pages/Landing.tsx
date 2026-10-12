@@ -1,0 +1,248 @@
+import { ArrowRight, Code2, Github, MessageSquareText, MoreHorizontal, MousePointerClick, Smartphone, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { AuthModal } from '../components/AuthModal';
+import { Logo } from '../components/Logo';
+import { PromptBox } from '../components/PromptBox';
+import { UserMenu } from '../components/UserMenu';
+import { WaveBackground } from '../components/WaveBackground';
+import { EXAMPLES, PROMPT_IDEAS } from '../examples';
+import { api, type ProjectSummary } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { timeAgo } from '../lib/time';
+import { PhoneThumbnail } from '../renderer/PhoneFrame';
+
+const GITHUB_URL = 'https://github.com/Odinachi/Wolf';
+const PENDING_KEY = 'wolf:pending-prompt';
+
+export function Landing() {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const [prompt, setPrompt] = useState(() => sessionStorage.getItem(PENDING_KEY) ?? '');
+  const [auth, setAuth] = useState<{ open: boolean; mode: 'signup' | 'login'; reason?: string }>({ open: false, mode: 'signup' });
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!user) { setProjects(null); return; }
+    api.projects().then(setProjects).catch(() => setProjects([]));
+  }, [user]);
+
+  const build = useCallback(async (text: string) => {
+    setError(null);
+    setCreating(true);
+    try {
+      const project = await api.createProject(text);
+      sessionStorage.removeItem(PENDING_KEY);
+      navigate(`/p/${project.id}`, { state: { autostart: text } });
+    } catch (e) {
+      setError((e as Error).message);
+      setCreating(false);
+    }
+  }, [navigate]);
+
+  const submit = () => {
+    const text = prompt.trim();
+    if (!text) return;
+    if (!user) {
+      // Keep the prompt across the auth step (and a reload) so nothing typed is lost.
+      sessionStorage.setItem(PENDING_KEY, text);
+      setAuth({ open: true, mode: 'signup', reason: 'Create a free account and Wolf will start building your app.' });
+      return;
+    }
+    build(text);
+  };
+
+  const removeProject = async (id: string) => {
+    if (!confirm('Delete this app? This can’t be undone.')) return;
+    await api.deleteProject(id);
+    setProjects(p => p?.filter(x => x.id !== id) ?? null);
+  };
+
+  return (
+    <div className="min-h-dvh bg-[#FCFCFD] text-zinc-950">
+      {/* Nav */}
+      <header className={`fixed inset-x-0 top-0 z-30 transition-[background,box-shadow] duration-300 ${scrolled ? 'bg-white/75 shadow-[0_1px_0_rgb(24_24_27/0.06)] backdrop-blur-xl' : ''}`}>
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
+          <Link to="/" aria-label="Wolf home"><Logo /></Link>
+          <nav className="hidden items-center gap-1 text-sm font-medium text-zinc-600 md:flex">
+            <a href="#showcase" className="rounded-full px-3.5 py-2 transition hover:bg-zinc-950/5 hover:text-zinc-950">Showcase</a>
+            <a href="#how" className="rounded-full px-3.5 py-2 transition hover:bg-zinc-950/5 hover:text-zinc-950">How it works</a>
+            <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-full px-3.5 py-2 transition hover:bg-zinc-950/5 hover:text-zinc-950">
+              <Github size={15} /> GitHub
+            </a>
+          </nav>
+          <div className="flex items-center gap-2">
+            {loading ? null : user ? <UserMenu /> : (
+              <>
+                <button onClick={() => setAuth({ open: true, mode: 'login' })} className="rounded-full px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-950/5">Log in</button>
+                <button onClick={() => setAuth({ open: true, mode: 'signup' })} className="rounded-full bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Get started</button>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="relative isolate flex min-h-[94dvh] flex-col items-center justify-center overflow-hidden px-5 pb-40 pt-28">
+        <WaveBackground />
+        <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="relative mb-7 flex items-center gap-2 rounded-full bg-white/70 py-1 pl-1 pr-3 text-[13px] font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-950/5 backdrop-blur transition hover:bg-white animate-[fade-up_600ms_ease_both]">
+          <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-white">New</span>
+          Open source · Compiles to Flutter
+          <ArrowRight size={13} className="text-zinc-400" />
+        </a>
+        <h1 className="relative max-w-4xl text-center text-[44px] font-semibold leading-[1.02] tracking-[-0.045em] text-zinc-950 sm:text-[68px] animate-[fade-up_700ms_80ms_ease_both]">
+          Build mobile apps
+          <br />
+          <span className="text-shimmer">by chatting with AI</span>
+        </h1>
+        <p className="relative mt-5 max-w-xl text-center text-lg leading-relaxed text-zinc-600 animate-[fade-up_700ms_160ms_ease_both]">
+          Describe your idea. Wolf designs every screen, lets you refine it like a design file, and turns it into a real Flutter app.
+        </p>
+        <div className="relative mt-9 w-full max-w-2xl animate-[fade-up_700ms_240ms_ease_both]">
+          <PromptBox value={prompt} onChange={setPrompt} onSubmit={submit} busy={creating} ideas={PROMPT_IDEAS} />
+          {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {PROMPT_IDEAS.slice(0, 4).map(idea => (
+              <button key={idea} onClick={() => setPrompt(idea)} className="rounded-full bg-white/60 px-3.5 py-1.5 text-[13px] text-zinc-600 ring-1 ring-zinc-950/[0.06] backdrop-blur transition hover:bg-white hover:text-zinc-950">
+                {idea}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Your apps (signed in) */}
+      {user && projects && projects.length > 0 && (
+        <section className="relative z-10 mx-auto -mt-24 max-w-7xl px-5">
+          <div className="rounded-[32px] bg-white p-6 shadow-[0_-20px_60px_-30px_rgb(76_29_149/0.25)] ring-1 ring-zinc-950/5 sm:p-8">
+            <div className="mb-6 flex items-baseline justify-between">
+              <h2 className="text-xl font-semibold tracking-tight">{user.name.split(' ')[0]}’s apps</h2>
+              <span className="text-sm text-zinc-400">{projects.length} app{projects.length === 1 ? '' : 's'}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {projects.map(p => <ProjectCard key={p.id} project={p} onDelete={() => removeProject(p.id)} />)}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Showcase */}
+      <section id="showcase" className="mx-auto max-w-7xl px-5 py-28">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">Showcase</p>
+          <h2 className="mt-3 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">One sentence in. A whole app out.</h2>
+          <p className="mt-4 text-lg text-zinc-600">Every screen below is a real Wolf app, rendered live from the same schema that compiles to Flutter.</p>
+        </div>
+        <div className="mt-16 flex flex-wrap items-end justify-center gap-10 lg:gap-16">
+          {EXAMPLES.map((ex, i) => (
+            <figure key={ex.name} className="group flex flex-col items-center" style={{ animation: `float 7s ease-in-out ${i * -2.3}s infinite` }}>
+              <div className={`transition duration-500 group-hover:-translate-y-2 group-hover:rotate-0 ${i === 0 ? '-rotate-3' : i === 2 ? 'rotate-3' : 'lg:-translate-y-8'}`}>
+                <PhoneThumbnail screen={ex.screen} theme={ex.theme} navigation={ex.navigation} width={270} />
+              </div>
+              <figcaption className="mt-7 max-w-[260px] text-center">
+                <div className="text-[15px] font-semibold">{ex.name}</div>
+                <div className="mt-1 text-sm text-zinc-500">“{ex.prompt}”</div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section id="how" className="mx-auto max-w-7xl px-5 pb-28">
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            { icon: MessageSquareText, title: 'Describe it', body: 'Tell Wolf what you want in plain words. It plans the screens, data and navigation, then builds them while you watch.' },
+            { icon: MousePointerClick, title: 'Refine it', body: 'Click anything on a phone frame and tell Wolf what to change. Every change can be rolled back.' },
+            { icon: Code2, title: 'Ship it', body: 'Wolf compiles your app to clean, idiomatic Flutter for iOS and Android. It’s your code: export it any time.' },
+          ].map(({ icon: Icon, title, body }, i) => (
+            <div key={title} className="relative overflow-hidden rounded-3xl bg-white p-7 ring-1 ring-zinc-950/5 transition hover:shadow-xl hover:shadow-violet-500/5">
+              <div className="flex items-center justify-between">
+                <span className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25"><Icon size={20} /></span>
+                <span className="text-5xl font-semibold tracking-tighter text-zinc-100">0{i + 1}</span>
+              </div>
+              <h3 className="mt-6 text-lg font-semibold tracking-tight">{title}</h3>
+              <p className="mt-2 leading-relaxed text-zinc-600">{body}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="relative mt-16 overflow-hidden rounded-[32px] bg-zinc-950 px-8 py-14 text-center text-white">
+          <div aria-hidden className="absolute inset-0 opacity-70" style={{ background: 'radial-gradient(60% 120% at 20% 120%, #6366F1 0%, transparent 60%), radial-gradient(50% 120% at 80% 120%, #EC4899 0%, transparent 60%)' }} />
+          <Smartphone className="relative mx-auto text-white/80" size={28} />
+          <h2 className="relative mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Your next app is one prompt away</h2>
+          <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="relative mt-7 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-100">
+            Start building <ArrowRight size={15} />
+          </button>
+        </div>
+      </section>
+
+      <footer className="border-t border-zinc-950/5">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-5 py-8 text-sm text-zinc-500 sm:flex-row">
+          <Logo size={22} />
+          <p>Open source under the MIT license.</p>
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-zinc-900"><Github size={15} /> Star on GitHub</a>
+        </div>
+      </footer>
+
+      <AuthModal
+        open={auth.open}
+        initialMode={auth.mode}
+        reason={auth.reason}
+        onClose={() => setAuth(a => ({ ...a, open: false }))}
+        onSuccess={() => {
+          setAuth(a => ({ ...a, open: false }));
+          const pending = sessionStorage.getItem(PENDING_KEY);
+          if (pending) build(pending);
+        }}
+      />
+    </div>
+  );
+}
+
+function ProjectCard({ project, onDelete }: { project: ProjectSummary; onDelete: () => void }) {
+  const [menu, setMenu] = useState(false);
+  const { screen, theme } = project.cover;
+  return (
+    <div className="group relative">
+      <Link to={`/p/${project.id}`} className="block">
+        <div className="relative h-56 overflow-hidden rounded-2xl ring-1 ring-zinc-950/5 transition group-hover:ring-violet-300" style={{ background: `linear-gradient(160deg, ${theme?.primary ?? '#7C3AED'}22, ${theme?.primary ?? '#7C3AED'}08)` }}>
+          {screen && theme ? (
+            <div className="absolute left-1/2 top-5 -translate-x-1/2 transition duration-500 group-hover:-translate-y-1">
+              <PhoneThumbnail screen={screen} theme={theme} width={150} />
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-2.5 px-1">
+          <div className="truncate text-[15px] font-medium">{project.name}</div>
+          <div className="text-xs text-zinc-400">Edited {timeAgo(project.updated_at)}</div>
+        </div>
+      </Link>
+      <button
+        onClick={() => setMenu(!menu)}
+        onBlur={() => setTimeout(() => setMenu(false), 150)}
+        aria-label="App options"
+        className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-white/90 text-zinc-600 opacity-0 shadow-sm ring-1 ring-zinc-950/5 transition group-hover:opacity-100 focus:opacity-100"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {menu && (
+        <div className="absolute right-2 top-11 z-20 w-40 rounded-xl bg-white p-1 shadow-xl ring-1 ring-zinc-950/5">
+          <button onMouseDown={onDelete} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+            <Trash2 size={14} /> Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
