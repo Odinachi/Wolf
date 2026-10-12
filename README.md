@@ -47,6 +47,11 @@ Every Wolf app is a single JSON **schema**: screens, components, theme, data mod
 The AI edits it only through validated tools, the browser renders it as Material 3 phone frames, and
 the compiler turns the same schema into a Flutter project.
 
+The agent loop is built for token efficiency, following
+[The Harness Effect](https://arxiv.org/abs/2607.06906): per-turn cost accounting, prompt caching,
+outline snapshots with on-demand detail, short ids, structured compaction, and typed retries with a
+fallback model. See [docs/harness.md](docs/harness.md).
+
 ## 📦 Repository layout
 
 | Path | What's inside |
@@ -98,6 +103,7 @@ run `WOLF_API_PORT=8010 npm run dev`.
 | `OPENROUTER_API_KEY` | ✅ | Your OpenRouter key |
 | `FIREBASE_PROJECT_ID` | ✅ | Used to verify sign-ins |
 | `WOLF_MODEL` | | Any tool-capable OpenRouter model. Default `anthropic/claude-haiku-5.5` |
+| `WOLF_FALLBACK_MODELS` | | Comma-separated models to fall back to when the main one fails |
 | `WOLF_CORS_ORIGINS` | | Comma-separated web app origins. Default `http://localhost:5173` |
 | `WOLF_ACCESS_MODE` | | `open` (default) or `waitlist`, which only lets in `WOLF_ALLOWED_EMAILS` |
 | `WOLF_ALLOWED_EMAILS` | | Comma-separated emails allowed to sign in during the waitlist |
@@ -173,6 +179,7 @@ To launch, set `ALLOW_AUTH=true` on Vercel and `WOLF_ACCESS_MODE=open` on Railwa
 | Where | Command | What it does |
 |-------|---------|--------------|
 | `backend/` | `uv run pytest` | API and compiler tests (runs `flutter analyze` on generated apps if Flutter is installed) |
+| `backend/` | `uv run python -m evals.run` | Runs the locked agent tasks and reports cost, tokens and quality ([details](docs/harness.md#measuring-changes-evals-and-release-gates)) |
 | `web/` | `npm test` | Schema package tests |
 | `web/` | `npm run typecheck` | Type-checks the app and the schema package |
 | `web/` | `npm run assets` | Regenerates the favicons and social image from `public/logo.svg` |
