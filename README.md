@@ -1,118 +1,184 @@
+<div align="center">
+
+<img src="web/public/logo.svg" width="72" alt="Wolf logo" />
+
 # Wolf
 
-Wolf is an open-source AI builder for mobile apps, in the spirit of Lovable but for phones.
-Describe an app in plain words. Wolf designs the screens, data and navigation, lets you edit
-every screen directly like a design tool, connects a database, and compiles it to **Flutter**.
+**Build mobile apps by chatting with AI.**
 
-> Status: early development. Today you can describe an app, watch Wolf generate its screens on
-> live phone frames, refine it by chatting (click any element to scope a change), roll back any AI
-> change, and export a Flutter project. Direct visual editing, database setup and builds in the UI
-> are next.
+Describe your idea. Wolf designs every screen, lets you refine it like a design file,<br />
+and compiles it to a real Flutter app for iOS and Android.
 
-## Repository layout
+[![License: MIT](https://img.shields.io/badge/license-MIT-7C3AED.svg)](LICENSE)
+![Flutter](https://img.shields.io/badge/output-Flutter-02569B.svg)
+![Status](https://img.shields.io/badge/status-early%20development-EC4899.svg)
 
-The backend and the frontend live side by side and can be developed and deployed independently.
+<img src="web/public/og.png" alt="Wolf: build mobile apps by chatting with AI" width="100%" />
 
-| Path | What it is |
-|------|------------|
-| `backend/` | The API (FastAPI): auth, projects, the AI agent, builds and sharing. A uv workspace. |
-| `backend/packages/flutter-codegen` | Compiles a Wolf app schema into a Flutter project (Python) |
-| `web/` | The web app (React + Vite): landing page, projects, chat + canvas workspace. An npm workspace. |
-| `web/packages/schema` | The Wolf app schema: types, component catalog and tree helpers (TypeScript) |
+</div>
 
-The component catalog is defined once in `web/packages/schema` and exported to
-`backend/src/wolf_api/agent/catalog.json` for the AI agent; a test fails if the two drift.
+---
 
-## Getting started
+## ✨ What it does
 
-Requirements: Node 20+, [uv](https://docs.astral.sh/uv/), and optionally the
-[Flutter SDK](https://docs.flutter.dev/get-started/install) to build apps.
+- **Prompt to app.** Type one sentence and watch Wolf plan the screens, theme, data and navigation,
+  then build them live on phone frames.
+- **Refine by pointing.** Click any element on a screen and tell Wolf what to change. Every AI change
+  is listed and can be rolled back.
+- **Real Flutter output.** The app compiles to clean, idiomatic Flutter (Material 3) that passes
+  `flutter analyze`, with typed data models and optional Supabase, Firebase or REST repositories.
+- **Any model.** The AI runs through [OpenRouter](https://openrouter.ai), so you choose the model.
 
-**Firebase (sign-in).** Wolf signs people in with GitHub or Google through Firebase Auth.
-Create a project in the [Firebase console](https://console.firebase.google.com/), then:
+> **Early development.** Prompting, live generation, refining and rollback work today. Direct
+> visual editing, connecting a database from the UI, and one-click builds are next.
 
-1. Authentication → Sign-in method: enable **GitHub** and **Google** (only these are accepted).
-   GitHub needs an OAuth app; Firebase shows the callback URL to register with it.
-2. Project settings → Your apps → add a **Web app** and copy its config into `web/.env`.
-3. Put the project id in `backend/.env` (`FIREBASE_PROJECT_ID`).
+## 🧭 How it works
 
-**Backend**
+```mermaid
+flowchart LR
+  A[Your prompt] --> B[AI agent<br/>OpenRouter]
+  B -- validated tool calls --> C[(App schema)]
+  C --> D[Live phone frames<br/>in the browser]
+  C --> E[Flutter compiler]
+  E --> F[iOS & Android app]
+```
+
+Every Wolf app is a single JSON **schema**: screens, components, theme, data models and navigation.
+The AI edits it only through validated tools, the browser renders it as Material 3 phone frames, and
+the compiler turns the same schema into a Flutter project.
+
+## 📦 Repository layout
+
+| Path | What's inside |
+|------|---------------|
+| [`backend/`](backend) | FastAPI service: auth, projects, the AI agent, builds, waitlist |
+| [`backend/packages/flutter-codegen`](backend/packages/flutter-codegen) | Schema → Flutter project compiler |
+| [`web/`](web) | React + Vite app: landing page, projects, chat + canvas workspace |
+| [`web/packages/schema`](web/packages/schema) | The app schema: types, component catalog, tree helpers |
+
+The backend and the web app are independent and can be deployed separately.
+
+## 🚀 Quick start
+
+**You'll need:** Node 20+, [uv](https://docs.astral.sh/uv/), an [OpenRouter](https://openrouter.ai/keys)
+API key and a [Firebase](https://console.firebase.google.com/) project.
+The [Flutter SDK](https://docs.flutter.dev/get-started/install) is optional (for building apps).
+
+**1. Set up Firebase sign-in.** In your Firebase project, enable **GitHub** and **Google** under
+Authentication → Sign-in method, then add a **Web app** (Project settings → Your apps) to get its config.
+
+**2. Run the backend.**
 
 ```bash
 cd backend
-cp .env.example .env      # OPENROUTER_API_KEY, FIREBASE_PROJECT_ID
+cp .env.example .env   # add OPENROUTER_API_KEY and FIREBASE_PROJECT_ID
 uv sync
 uv run uvicorn wolf_api.main:app --reload --port 8000
 ```
 
-**Web**
+**3. Run the web app.**
 
 ```bash
 cd web
-cp .env.example .env      # the Firebase web config
+cp .env.example .env   # add the Firebase web config and set VITE_ALLOW_AUTH=true
 npm install
-npm run dev               # http://localhost:5173, proxies /api to the backend
+npm run dev            # → http://localhost:5173
 ```
 
-If port 8000 is taken, run the backend on another port and start the web app with
-`WOLF_API_PORT=8010 npm run dev`.
+The dev server forwards `/api` to the backend. If port 8000 is taken, start the backend elsewhere and
+run `WOLF_API_PORT=8010 npm run dev`.
 
-## AI models
+## ⚙️ Configuration
 
-Wolf talks to models through [OpenRouter](https://openrouter.ai), so you can use any model that
-supports tool calling. The default is `anthropic/claude-opus-5.5`; set `WOLF_MODEL` in
-`backend/.env` to try others (for example `anthropic/claude-sonnet-5.5` for lower cost). Set an
-OpenRouter credit limit, and keep `WOLF_DAILY_GENERATION_LIMIT` on, to cap spending.
+<details>
+<summary><b>Backend</b> (<code>backend/.env</code>)</summary>
 
-## Deploying
+| Variable | Required | Description |
+|----------|:--------:|-------------|
+| `OPENROUTER_API_KEY` | ✅ | Your OpenRouter key |
+| `FIREBASE_PROJECT_ID` | ✅ | Used to verify sign-ins |
+| `WOLF_MODEL` | | Any tool-capable OpenRouter model. Default `anthropic/claude-opus-5.5` |
+| `WOLF_CORS_ORIGINS` | | Comma-separated web app origins. Default `http://localhost:5173` |
+| `WOLF_ACCESS_MODE` | | `open` (default) or `waitlist`, which only lets in `WOLF_ALLOWED_EMAILS` |
+| `WOLF_ALLOWED_EMAILS` | | Comma-separated emails allowed to sign in during the waitlist |
+| `WOLF_DAILY_GENERATION_LIMIT` | | AI requests per user per 24 hours. Default `30`, `0` for unlimited |
+| `FIREBASE_STORAGE_BUCKET` | | Store build files in Firebase Storage (otherwise kept on disk) |
+| `FIREBASE_SERVICE_ACCOUNT` | | Service account JSON (raw or base64), needed for Storage and backups |
+| `LITESTREAM_BUCKET` | | Continuously back up the database to this bucket (Docker only) |
+| `WOLF_DATA_DIR` | | Where the SQLite database lives. Default `backend/data` |
 
-The backend runs on [Railway](https://railway.com) (SQLite on a volume), files and backups live in
-Firebase Storage, and the web app runs on [Vercel](https://vercel.com).
+</details>
 
-**Backend on Railway**
+<details>
+<summary><b>Web</b> (<code>web/.env</code>)</summary>
 
-1. New service from this repo, with **Root Directory** `backend` (it builds `backend/Dockerfile`
-   using `backend/railway.json`).
+| Variable | Description |
+|----------|-------------|
+| `VITE_ALLOW_AUTH` | `true` shows **Log in / Get started**. Unset or anything else shows **Join waitlist** |
+| `VITE_API_URL` | The backend URL. Leave empty in development |
+| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Your Firebase web config (public values) |
+| `VITE_SITE_URL` | Your site's public URL, for social preview images |
+
+</details>
+
+## 🌍 Deploying
+
+Wolf runs on **Railway** (backend + SQLite) and **Vercel** (web), with **Firebase** for sign-in and files.
+
+<details>
+<summary><b>Backend on Railway</b></summary>
+
+1. Create a service from this repo with **Root Directory** `backend`. It builds from
+   `backend/Dockerfile` using `backend/railway.json`.
 2. Add a **volume** mounted at `/data`.
-3. Variables:
-   - `OPENROUTER_API_KEY`, `FIREBASE_PROJECT_ID` (and optionally `WOLF_MODEL`)
-   - `FIREBASE_STORAGE_BUCKET` and `FIREBASE_SERVICE_ACCOUNT` (Firebase → Project settings → Service
-     accounts → Generate new private key; paste the JSON) to store build files in Firebase Storage
-   - `LITESTREAM_BUCKET` (the same bucket) to continuously back up the database; a fresh volume
-     restores from it automatically
-   - `WOLF_CORS_ORIGINS`: your Vercel URL(s)
-   - `WOLF_ACCESS_MODE=waitlist` and `WOLF_ALLOWED_EMAILS=you@example.com` until launch
-   - optional: `WOLF_DAILY_GENERATION_LIMIT` (default 30 AI requests per user per day)
-4. Generate a public domain for the service.
+3. Set the variables: `OPENROUTER_API_KEY`, `FIREBASE_PROJECT_ID`, `WOLF_CORS_ORIGINS` (your Vercel
+   URL) and, until launch, `WOLF_ACCESS_MODE=waitlist` with `WOLF_ALLOWED_EMAILS`.
+4. Optional: `FIREBASE_STORAGE_BUCKET` + `FIREBASE_SERVICE_ACCOUNT` for file storage, and
+   `LITESTREAM_BUCKET` (same bucket) for continuous database backups.
+5. Generate a public domain.
 
-**Web on Vercel**
+</details>
 
-1. Import the repo with **Root Directory** `web` (settings come from `web/vercel.json`).
-2. Environment variables: the `VITE_FIREBASE_*` values, `VITE_API_URL` (your Railway URL),
-   `VITE_SITE_URL` (your site's URL, for social previews) and `VITE_ALLOW_AUTH` (leave unset to show
-   the waitlist).
-3. In Firebase → Authentication → Settings → Authorized domains, add your Vercel domain.
+<details>
+<summary><b>Web on Vercel</b></summary>
 
-**Waitlist.** With `WOLF_ACCESS_MODE=waitlist`, every way in on the landing page opens a waitlist
-form, and the API refuses sign-in for everyone except `WOLF_ALLOWED_EMAILS` (enforced on the server,
-not just hidden in the UI). Signups are stored in the `waitlist` table; to export them from Railway:
+1. Import the repo with **Root Directory** `web`. Settings come from `web/vercel.json`.
+2. Add the `VITE_FIREBASE_*` values, `VITE_API_URL` (your Railway URL) and `VITE_SITE_URL`.
+   Leave `VITE_ALLOW_AUTH` unset to show the waitlist.
+3. In Firebase → Authentication → Settings → **Authorized domains**, add your Vercel domain.
+
+</details>
+
+<details>
+<summary><b>Waitlist</b></summary>
+
+Before launch, the site shows **Join waitlist** instead of sign-in (`VITE_ALLOW_AUTH` unset), and the
+backend refuses everyone except `WOLF_ALLOWED_EMAILS` (`WOLF_ACCESS_MODE=waitlist`), so access is
+enforced on the server, not just hidden in the page. Signups are stored with the idea people typed.
+Export them from Railway:
 
 ```bash
 railway ssh -- python -c "import csv,sqlite3,sys; w=csv.writer(sys.stdout); w.writerow(['email','idea','created_at']); w.writerows(sqlite3.connect('/data/wolf.db').execute('select email, idea, created_at from waitlist'))"
 ```
 
-Set `WOLF_ACCESS_MODE=open` (or remove it) when you launch.
+To launch, set `VITE_ALLOW_AUTH=true` on Vercel and `WOLF_ACCESS_MODE=open` on Railway.
 
-## Useful commands
+</details>
+
+## 🧪 Development
 
 | Where | Command | What it does |
 |-------|---------|--------------|
-| `backend/` | `uv run pytest` | API and Flutter compiler tests (runs `flutter analyze` on generated apps if Flutter is installed) |
+| `backend/` | `uv run pytest` | API and compiler tests (runs `flutter analyze` on generated apps if Flutter is installed) |
 | `web/` | `npm test` | Schema package tests |
 | `web/` | `npm run typecheck` | Type-checks the app and the schema package |
-| `web/` | `npm run assets` | Regenerates favicons and the OG image from `public/logo.svg` |
+| `web/` | `npm run assets` | Regenerates the favicons and social image from `public/logo.svg` |
 | `web/` | `UPDATE_CATALOG=1 npm test` | Re-exports the component catalog to the backend after changing it |
 
-## License
+## 🤝 Contributing
 
-[MIT](LICENSE)
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 📄 License
+
+[MIT](LICENSE) © Odinachi David and Wolf contributors
