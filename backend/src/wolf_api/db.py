@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint, create_engine, event, inspect
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, create_engine, event, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from . import config
@@ -27,36 +27,13 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("usr"))
-    # A verified email from a provider, used to link GitHub and Google sign-ins to one account.
-    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
+    # The Firebase Auth uid.
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
+    # Only set when the provider verified it.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class OAuthAccount(Base):
-    """A GitHub or Google identity that signs in as a user."""
-
-    __tablename__ = "oauth_accounts"
-    __table_args__ = (UniqueConstraint("provider", "provider_user_id"),)
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("oac"))
-    provider: Mapped[str] = mapped_column(String(16))  # "github" | "google"
-    provider_user_id: Mapped[str] = mapped_column(String(64))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class AuthSession(Base):
-    __tablename__ = "sessions"
-
-    # SHA-256 of the cookie token, so a leaked database doesn't leak live sessions.
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-    user: Mapped[User] = relationship()
 
 
 class Project(Base):
@@ -104,7 +81,8 @@ class Build(Base):
     platform: Mapped[str] = mapped_column(String(16))  # "android" | "ios" | "source"
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | succeeded | failed
     logs: Mapped[str] = mapped_column(Text, default="")
-    artifact_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Key of the built file in storage (Firebase Storage, or DATA_DIR/files locally).
+    artifact_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Anyone with this token can download the artifact (for sharing installs).
     share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -127,9 +105,9 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 def init_db() -> None:
     existing = inspect(engine)
-    if existing.has_table("users") and "password_hash" in {c["name"] for c in existing.get_columns("users")}:
+    if existing.has_table("sessions") or existing.has_table("oauth_accounts"):
         raise RuntimeError(
-            "This database predates social sign-in (it still has password accounts). "
+            "This database predates Firebase sign-in. "
             f"Delete {config.DATA_DIR / 'wolf.db'} to start fresh."
         )
     Base.metadata.create_all(engine)

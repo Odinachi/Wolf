@@ -2,6 +2,7 @@
 
 Builds run in a background thread on the API host. Android builds need the Android SDK; iOS builds
 need macOS with Xcode and produce an unsigned app (signing and store upload happen outside Wolf).
+Finished files go to storage (Firebase Storage in production, see storage.py).
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from . import config
 from .auth import current_user
 from .db import Build, Project, SessionLocal, User, get_db, utcnow
 from .projects import owned, source_zip
+from .storage import get_storage
 
 router = APIRouter(tags=["builds"])
 BUILDS_DIR = config.DATA_DIR / "builds"
@@ -105,12 +107,21 @@ def _run(cmd: list[str], cwd: Path, log: _Log) -> None:
         raise RuntimeError(f"`{' '.join(cmd[:3])}` failed with exit code {proc.returncode}.")
 
 
+CONTENT_TYPES = {".apk": "application/vnd.android.package-archive", ".zip": "application/zip"}
+
+
 def _finish(build_id: str, status: str, artifact: Path | None) -> None:
+    key = None
+    if artifact:
+        with SessionLocal() as db:
+            project_id = db.get(Build, build_id).project_id
+        key = f"builds/{project_id}/{build_id}/{artifact.name}"
+        get_storage().put(key, artifact, CONTENT_TYPES.get(artifact.suffix, "application/octet-stream"))
     with SessionLocal() as db:
         build = db.get(Build, build_id)
         if build:
             build.status = status
-            build.artifact_path = str(artifact) if artifact else None
+            build.artifact_key = key
             build.finished_at = utcnow()
             db.commit()
 
@@ -164,8 +175,8 @@ def _build_worker(build_id: str, schema: dict, target: str) -> None:
         log.write(f"Build failed: {e}", force=True)
         _finish(build_id, "failed", None)
     finally:
-        # Keep the artifact, drop the (large) working tree.
-        shutil.rmtree(app_dir, ignore_errors=True)
+        # The artifact now lives in storage; drop the (large) working tree.
+        shutil.rmtree(work, ignore_errors=True)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -188,7 +199,7 @@ class BuildOut(BaseModel):
 
 def _build_out(b: Build) -> BuildOut:
     return BuildOut(
-        id=b.id, platform=b.platform, status=b.status, logs=b.logs, has_artifact=bool(b.artifact_path), share_token=b.share_token,
+        id=b.id, platform=b.platform, status=b.status, logs=b.logs, has_artifact=bool(b.artifact_key), share_token=b.share_token,
         created_at=b.created_at.isoformat(), finished_at=b.finished_at.isoformat() if b.finished_at else None,
     )
 
@@ -231,12 +242,19 @@ def get_build(build_id: str, user: User = Depends(current_user), db: Session = D
     return _build_out(_owned_build(build_id, user, db))
 
 
-def _artifact(build: Build) -> FileResponse:
-    if not build.artifact_path or not Path(build.artifact_path).is_file():
+def _artifact(build: Build) -> Response:
+    """Serves a local file, or redirects to a short-lived signed URL in Firebase Storage."""
+    if not build.artifact_key:
         raise HTTPException(404, "This build has no downloadable file.")
-    path = Path(build.artifact_path)
-    media = "application/vnd.android.package-archive" if path.suffix == ".apk" else "application/zip"
-    return FileResponse(path, media_type=media, filename=path.name)
+    filename = build.artifact_key.rsplit("/", 1)[-1]
+    storage = get_storage()
+    local = storage.local_path(build.artifact_key)
+    if local:
+        return FileResponse(local, media_type=CONTENT_TYPES.get(local.suffix, "application/octet-stream"), filename=filename)
+    url = storage.download_url(build.artifact_key, filename)
+    if not url:
+        raise HTTPException(404, "This build's file is no longer available.")
+    return RedirectResponse(url, status_code=302)
 
 
 @router.get("/api/builds/{build_id}/artifact")
@@ -247,7 +265,7 @@ def download_artifact(build_id: str, user: User = Depends(current_user), db: Ses
 @router.post("/api/builds/{build_id}/share", response_model=BuildOut)
 def share_build(build_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     build = _owned_build(build_id, user, db)
-    if build.status != "succeeded" or not build.artifact_path:
+    if build.status != "succeeded" or not build.artifact_key:
         raise HTTPException(400, "Only finished builds can be shared.")
     if not build.share_token:
         build.share_token = secrets.token_urlsafe(16)

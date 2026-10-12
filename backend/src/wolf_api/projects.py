@@ -20,7 +20,7 @@ from wolf_flutter import generate_project
 
 from .agent.runner import run_agent
 from .auth import current_user
-from .db import Message, Project, SessionLocal, User, Version, get_db
+from .db import Build, Message, Project, SessionLocal, User, Version, get_db
 from .schema import SchemaShape, blank_schema, name_from_prompt
 
 log = logging.getLogger("wolf.projects")
@@ -143,8 +143,17 @@ def patch_project(project_id: str, body: PatchIn, user: User = Depends(current_u
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    db.delete(owned(project_id, user, db))
+    from .storage import get_storage
+
+    project = owned(project_id, user, db)
+    keys = [b.artifact_key for b in db.scalars(select(Build).where(Build.project_id == project_id)) if b.artifact_key]
+    db.delete(project)
     db.commit()
+    for key in keys:  # best effort: don't fail the delete over a missing file
+        try:
+            get_storage().delete(key)
+        except Exception:
+            log.warning("Couldn't delete stored file %s", key, exc_info=True)
 
 
 # ─── AI chat ─────────────────────────────────────────────────────────────────

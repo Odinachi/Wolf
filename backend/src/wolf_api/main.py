@@ -12,9 +12,10 @@ app = FastAPI(title="Wolf API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_credentials=True,
+    # Auth is a bearer token, not a cookie, so the web app can live on another domain.
+    allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(auth.router)
 app.include_router(projects.router)
