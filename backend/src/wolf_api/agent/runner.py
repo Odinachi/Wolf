@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 
 from .. import config
 from .accounting import TurnUsage
+from .context import system_message, with_cache_breakpoints
 from .prompts import system_prompt, user_turn
 from .tools import ToolError, execute, tool_definitions
 
@@ -84,10 +85,10 @@ async def run_agent(
     history_msgs = [{"role": m["role"], "content": m["content"]} for m in history if m.get("content")]
     while history_msgs and history_msgs[0]["role"] != "user":
         history_msgs.pop(0)
+    # The transcript is append-only for the whole run: the byte-stable prefix that prompt caching
+    # prices at about a tenth of list (see context.py).
     messages: list[dict[str, Any]] = [
-        # cache_control lets providers that support prompt caching (Anthropic, Gemini via OpenRouter)
-        # reuse the tools + instructions across the loop's turns; others ignore it.
-        {"role": "system", "content": [{"type": "text", "text": system_prompt(), "cache_control": {"type": "ephemeral"}}]},
+        system_message(system_prompt()),
         *history_msgs,
         {"role": "user", "content": user_turn(prompt, schema, selection)},
     ]
@@ -107,7 +108,7 @@ async def run_agent(
         try:
             stream = await client.chat.completions.create(
                 model=config.MODEL,
-                messages=messages,
+                messages=with_cache_breakpoints(messages),
                 tools=tools,
                 stream=True,
                 stream_options={"include_usage": True},

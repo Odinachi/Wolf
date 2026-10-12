@@ -98,6 +98,11 @@ def test_move_and_models():
 # ─── Loop + chat endpoint with a fake OpenRouter (OpenAI-compatible) client ───
 
 
+def text_of(content):
+    """Message text whether it's a plain string or content parts (parts carry cache breakpoints)."""
+    return content if isinstance(content, str) else "".join(p.get("text", "") for p in content)
+
+
 def chunk(content=None, tool_calls=None, finish=None):
     delta = SimpleNamespace(content=content, tool_calls=tool_calls)
     return SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=finish)])
@@ -168,7 +173,10 @@ def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     first = fake.requests[0]
     assert first["model"] and first["stream"] is True
     assert first["messages"][0]["role"] == "system" and first["messages"][0]["content"][0]["cache_control"]
-    assert "<selection>" in first["messages"][1]["content"]
+    assert "<selection>" in first["messages"][1]["content"][0]["text"]  # newest message carries a breakpoint
+    # Later turns: breakpoints slide onto the newest tool results.
+    later = fake.requests[2]["messages"]
+    assert later[-1]["role"] == "tool" and later[-1]["content"][0]["cache_control"]
     assert first["tools"][0]["type"] == "function"
     assert first["extra_body"] == {"usage": {"include": True}, "reasoning": {"effort": "high"}}  # empty app -> new-app effort
     assert first["stream_options"] == {"include_usage": True}
@@ -176,8 +184,8 @@ def test_chat_endpoint_streams_and_persists(authed, monkeypatch):
     # Split tool-call arguments were reassembled; the invalid call went back as an error result.
     second = fake.requests[1]["messages"]
     assert second[-3]["role"] == "assistant" and [c["id"] for c in second[-3]["tool_calls"]] == ["t1", "t2"]
-    assert second[-2] == {"role": "tool", "tool_call_id": "t1", "content": '{"ok": true}'}
-    assert second[-1]["tool_call_id"] == "t2" and "hex color" in second[-1]["content"]
+    assert second[-2]["tool_call_id"] == "t1" and text_of(second[-2]["content"]) == '{"ok": true}'
+    assert second[-1]["tool_call_id"] == "t2" and "hex color" in text_of(second[-1]["content"])
 
     saved = authed.get(f"/api/projects/{project['id']}").json()
     assert saved["schema"]["theme"]["primary"] == "#2E7D32"
@@ -197,7 +205,7 @@ def test_invalid_tool_json_is_reported_to_the_model(authed, monkeypatch):
     fake = FakeClient([broken, turn(texts=["ok"])])
     monkeypatch.setattr(runner, "get_client", lambda: fake)
     authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "x"})
-    assert "Invalid JSON" in fake.requests[1]["messages"][-1]["content"]
+    assert "Invalid JSON" in text_of(fake.requests[1]["messages"][-1]["content"])
 
 
 def test_chat_reports_errors(authed, monkeypatch):
