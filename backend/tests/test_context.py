@@ -85,3 +85,30 @@ def test_get_screen_returns_full_detail_and_changes_nothing():
     assert outcome.change is None and schema == before
     card = outcome.result["root"]["children"][0]
     assert card["style"]["borderRadius"] == 16 and card["children"][1]["props"]["label"] == "Continue"
+
+
+# ─── Structured compaction ───────────────────────────────────────────────────
+
+from wolf_api.agent.context import checkpoint_message, tail_start, transcript_chars  # noqa: E402
+
+
+def run_transcript(turns=6):
+    msgs = [system_message("rules"), {"role": "user", "content": "request"}]
+    for i in range(turns):
+        msgs.append({"role": "assistant", "content": None, "tool_calls": [{"id": f"t{i}", "type": "function", "function": {"name": "add_components", "arguments": "x" * 1000}}]})
+        msgs.append({"role": "tool", "tool_call_id": f"t{i}", "content": '{"ok":true}'})
+    return msgs
+
+
+def test_tail_starts_on_an_assistant_message():
+    msgs = run_transcript()
+    cut = tail_start(msgs, 2)
+    assert msgs[cut]["role"] == "assistant" and len(msgs) - cut <= 6
+    assert transcript_chars(msgs, 2) > 6000
+    assert tail_start(run_transcript(1), 2) is None  # too short to fold anything
+
+
+def test_checkpoint_keeps_the_request_and_progress():
+    m = checkpoint_message("<request>\nbuild a plant app\n</request>", ["Created Home screen", "Updated the theme"])
+    assert m["role"] == "user" and "build a plant app" in m["content"]
+    assert "- Created Home screen" in m["content"] and "Don't redo" in m["content"]

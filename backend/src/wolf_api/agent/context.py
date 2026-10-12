@@ -106,3 +106,48 @@ def project_snapshot(schema: dict, *, outline: bool = False, full_screen_ids: se
         "dataModels": schema["dataModels"],
         "screens": [screen(s) for s in schema["screens"]],
     }
+
+
+# ─── Structured compaction ───────────────────────────────────────────────────
+
+# Messages kept verbatim after a compaction (the live tail).
+TAIL_MESSAGES = 6
+
+
+def transcript_chars(messages: list[dict[str, Any]], start: int) -> int:
+    """Rough size of the run's transcript after the opening messages (what compaction can fold)."""
+    total = 0
+    for m in messages[start:]:
+        content = m.get("content")
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            total += sum(len(p.get("text", "")) for p in content if isinstance(p, dict))
+        for call in m.get("tool_calls") or []:
+            total += len(call["function"]["arguments"])
+    return total
+
+
+def tail_start(messages: list[dict[str, Any]], start: int, keep: int = TAIL_MESSAGES) -> int | None:
+    """Index where the live tail begins: at most `keep` messages, starting on an assistant message so
+    every kept tool result still follows the call that produced it. None if nothing can be folded."""
+    i = max(start, len(messages) - keep)
+    while i < len(messages) and messages[i].get("role") != "assistant":
+        i += 1
+    return i if start < i < len(messages) else None
+
+
+def checkpoint_message(request_turn: str, changes: list[str]) -> dict[str, Any]:
+    """Replaces the folded part of the run: the original request (verbatim, with a fresh project
+    snapshot) plus what has been done so far. The schema is the durable memory, so nothing is lost."""
+    done = "\n".join(f"- {c}" for c in changes) or "- (nothing yet)"
+    return {
+        "role": "user",
+        "content": (
+            f"{request_turn}\n\n"
+            "<progress>\nEarlier steps of this request were condensed to save space. The snapshot above "
+            "is the project as it is now. Changes made so far:\n"
+            f"{done}\n</progress>\n"
+            "Continue the request from where you left off. Don't redo finished work."
+        ),
+    }

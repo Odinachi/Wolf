@@ -222,6 +222,8 @@ async def chat(project_id: str, body: ChatIn, user: User = Depends(current_user)
                 elif kind == "usage":
                     usage.add(data)
                     continue  # internal accounting, not sent to the browser
+                elif kind == "compacted":
+                    continue
                 yield _sse(kind, data)
         except Exception:
             log.exception("AI run failed")

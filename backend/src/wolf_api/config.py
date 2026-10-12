@@ -27,6 +27,9 @@ MAX_AGENT_TURNS = int(os.getenv("WOLF_MAX_AGENT_TURNS", "30"))
 # Projects whose full snapshot is larger than this (characters) are sent as an outline; the agent
 # fetches a screen's props and styles with get_screen when it needs them.
 SNAPSHOT_BUDGET_CHARS = int(os.getenv("WOLF_SNAPSHOT_BUDGET_CHARS", "12000"))
+# When a run's transcript grows past this (characters), older turns are folded into a checkpoint
+# with a fresh project snapshot (structured compaction).
+COMPACT_AFTER_CHARS = int(os.getenv("WOLF_COMPACT_AFTER_CHARS", "40000"))
 
 # "open": anyone can sign in. "waitlist": the site collects waitlist signups and only the verified
 # emails in WOLF_ALLOWED_EMAILS can sign in (set this in production until launch).

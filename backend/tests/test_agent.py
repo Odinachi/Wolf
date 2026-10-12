@@ -314,3 +314,29 @@ def test_model_works_with_short_ids(authed, monkeypatch):
     assert '"id":"c2"' in result  # the new Text got the next alias, not a UUID
     saved = authed.get(f"/api/projects/{project['id']}").json()
     assert saved["schema"]["screens"][0]["root"]["children"][0]["props"]["text"] == "Hi"
+
+
+def test_long_runs_are_compacted(authed, monkeypatch):
+    from wolf_api import config
+    monkeypatch.setattr(config, "COMPACT_AFTER_CHARS", 600)
+    project = authed.post("/api/projects", json={"prompt": "an app with many screens"}).json()
+    names = [f"Screen {i}" for i in range(8)]
+    big = [{"type": "Text", "props": {"text": "x" * 120}} for _ in range(4)]
+    turns = [turn(calls=[(f"c{i}", "create_screen", {"name": n})]) for i, n in enumerate(names)]
+    turns.append(turn(calls=[("a1", "add_components", {"screen_id": "s1", "parent_id": "c1", "components": big})]))
+    turns.append(turn(texts=["All done."]))
+    fake = FakeClient(turns)
+    monkeypatch.setattr(runner, "get_client", lambda: fake)
+    authed.post(f"/api/projects/{project['id']}/chat", json={"prompt": "an app with many screens"})
+
+    last = fake.requests[-1]["messages"]
+    checkpoints = [m for m in last if m["role"] == "user" and "<progress>" in text_of(m["content"])]
+    assert len(checkpoints) == 1
+    cp = text_of(checkpoints[0]["content"])
+    assert "an app with many screens" in cp and "- Created Screen 0 screen" in cp and '"name":"Screen 7"' in cp
+    # The live tail is short and every tool result still follows its call.
+    assert len(last) < 2 + 2 * len(turns)
+    call_ids = {c["id"] for m in last if m["role"] == "assistant" for c in (m.get("tool_calls") or [])}
+    assert all(m["tool_call_id"] in call_ids for m in last if m["role"] == "tool")
+    saved = authed.get(f"/api/projects/{project['id']}").json()
+    assert len(saved["schema"]["screens"]) == 9 and saved["messages"][-1]["content"] == "All done."

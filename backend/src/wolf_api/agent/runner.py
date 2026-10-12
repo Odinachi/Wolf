@@ -14,7 +14,7 @@ from openai import AsyncOpenAI
 from .. import config
 from .accounting import TurnUsage
 from .aliases import IdAliases
-from .context import system_message, with_cache_breakpoints
+from .context import checkpoint_message, system_message, tail_start, transcript_chars, with_cache_breakpoints
 from .prompts import system_prompt, user_turn
 from .tools import ToolError, execute, tool_definitions
 
@@ -94,6 +94,8 @@ async def run_agent(
         *history_msgs,
         {"role": "user", "content": ids.shorten(user_turn(prompt, schema, selection), schema)},
     ]
+    opening = len(messages)  # system + earlier chat + this request; the run's own turns follow
+    changes: list[str] = []
 
     # Brand-new apps get more reasoning than small edits.
     is_new_app = sum(len(s["root"]["children"]) for s in schema["screens"]) == 0
@@ -102,6 +104,16 @@ async def run_agent(
         extra_body["reasoning"] = {"effort": "high" if is_new_app else "medium"}
 
     for _ in range(config.MAX_AGENT_TURNS):
+        # Structured compaction: fold older turns into a checkpoint once the transcript grows large.
+        if transcript_chars(messages, opening) > config.COMPACT_AFTER_CHARS:
+            cut = tail_start(messages, opening)
+            if cut is not None:
+                folded = cut - opening
+                fresh = ids.shorten(user_turn(prompt, schema, selection), schema)
+                messages = [*messages[: opening - 1], checkpoint_message(fresh, changes), *messages[cut:]]
+                log.info("Compacted %d messages into a checkpoint (%d changes so far)", folded, len(changes))
+                yield _event("compacted", folded=folded)
+
         text = ""
         calls: dict[int, dict[str, str]] = {}
         finish = None
@@ -178,6 +190,7 @@ async def run_agent(
             else:
                 if outcome.change:  # read-only tools (get_screen) change nothing
                     changed = True
+                    changes.append(outcome.change)
                     yield _event("change", text=outcome.change)
                 content = ids.shorten(json.dumps(outcome.result, separators=(",", ":")), schema)
             messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": content})
