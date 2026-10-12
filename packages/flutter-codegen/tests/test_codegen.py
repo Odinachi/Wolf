@@ -6,7 +6,7 @@ import pytest
 
 from wolf_flutter import generate_project
 from wolf_flutter import dart
-from tests.fixtures import sample_schema
+from wolf_fixtures import sample_schema
 
 
 def test_generates_expected_files():

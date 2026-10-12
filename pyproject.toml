@@ -4,6 +4,7 @@ members = ["apps/api", "packages/flutter-codegen"]
 
 [tool.pytest.ini_options]
 testpaths = ["apps/api/tests", "packages/flutter-codegen/tests"]
+pythonpath = ["packages/flutter-codegen/tests"]
 asyncio_mode = "auto"
 
 [dependency-groups]
