@@ -146,6 +146,9 @@ Wolf runs on **Railway** (backend + SQLite) and **Vercel** (web), with **Firebas
 2. Add the `FIREBASE_*` values, `API_URL` (your Railway URL) and `SITE_URL`.
    Leave `ALLOW_AUTH` unset to show the waitlist.
 3. In Firebase → Authentication → Settings → **Authorized domains**, add your Vercel domain.
+4. Turn on **Analytics** in the Vercel project (Analytics tab → Enable). The app already includes
+   Vercel Web Analytics; it records page views without cookies and replaces project ids in URLs
+   with `/p/[id]`.
 
 </details>
 
