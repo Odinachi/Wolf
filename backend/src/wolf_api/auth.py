@@ -36,8 +36,11 @@ def current_user(authorization: str | None = Header(default=None), db: Session =
         raise HTTPException(401, "Sign in to continue.")
     try:
         claims = verify_token(authorization[7:].strip())
-    except ValueError:
-        raise HTTPException(401, "Your sign-in has expired. Sign in again.") from None
+    except ValueError as e:
+        # Logged so a misconfiguration (e.g. FIREBASE_PROJECT_ID not matching the web app's project,
+        # which shows up as an "aud" claim error) is easy to spot in the server logs.
+        log.warning("Rejected Firebase ID token: %s", e)
+        raise HTTPException(401, "We couldn't verify your sign-in. Please sign in again.") from None
     except RuntimeError as e:  # Firebase isn't configured on this server
         log.error("Auth unavailable: %s", e)
         raise HTTPException(503, "Sign-in isn't set up on this server.") from None

@@ -73,12 +73,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(await api.me());
         setAccessError(null);
       } catch (e) {
+        // Signed in with Firebase but the backend didn't accept it (not invited yet, can't verify the
+        // token, can't reach the API...): say why and don't stay half signed in.
+        console.error('Wolf: signed in with Firebase, but loading the account failed:', e);
         setUser(null);
-        if (e instanceof ApiError && e.status === 403) {
-          // Signed in with Firebase but not allowed in (e.g. not invited yet): don't stay half signed in.
-          setAccessError(e.message);
-          await signOut(auth);
-        }
+        setAccessError(
+          e instanceof ApiError && e.status === 0
+            ? 'Signed in, but Wolf couldn’t reach its server. Please try again in a moment.'
+            : (e as Error).message || 'Sign-in failed. Please try again.',
+        );
+        await signOut(auth);
       } finally {
         setLoading(false);
       }
